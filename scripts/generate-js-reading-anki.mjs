@@ -425,6 +425,245 @@ function renderConsoleOutput(card) {
   return `<p><strong>Console output:</strong> ${sentence(escapeHtml(output.text))}</p>`;
 }
 
+function uniqueList(items, max = 5) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    const text = normalizeSpaces(String(item));
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    result.push(text);
+    if (result.length >= max) break;
+  }
+  return result;
+}
+
+function renderListSection(title, items) {
+  const body = uniqueList(items)
+    .map((item) => `<li>${sentence(escapeHtml(item))}</li>`)
+    .join("");
+  return `<p><strong>${escapeHtml(title)}:</strong></p><ul>${body}</ul>`;
+}
+
+function mentalModelFor(card) {
+  const code = card.code;
+
+  if (card.topic.startsWith("complex-")) {
+    return "Read this like production code under time pressure: find the setup values, trace each mutation or branch in order, and identify the final returned, thrown, or logged result.";
+  }
+  if (code.includes(".reduce(")) {
+    return "Treat the callback as a small state machine: the accumulator enters each iteration, the current item changes it, and the returned value becomes the next accumulator.";
+  }
+  if (code.includes(".map(") || code.includes(".filter(") || code.includes(".flatMap(")) {
+    return "Read the array method by separating the collection being visited from the callback that decides each new, kept, or flattened value.";
+  }
+  if (/\basync\b|\bawait\b|\.then\(|Promise\./.test(code)) {
+    return "Read the synchronous setup first, then mark every await, promise callback, or promise combinator as a point where timing or rejection behavior matters.";
+  }
+  if (/\bfunction\b|=>/.test(code) && /\breturn\b/.test(code)) {
+    return "Identify the inputs, then jump to the return value and work backward through the expressions that shape it.";
+  }
+  if (/\bclass\b|new\s+[A-Z_$]|prototype|this\./.test(code)) {
+    return "Separate object creation from behavior lookup: decide which object owns the data, then decide where the method or property is resolved.";
+  }
+  if (/\bfor\b|\bwhile\b/.test(code)) {
+    return "Find the loop state before the loop, trace how one iteration changes it, then apply that same change until the exit condition is met.";
+  }
+  if (/\bif\b|\bswitch\b|\?/.test(code)) {
+    return "Resolve the condition first, then ignore branches that cannot run for the shown values.";
+  }
+
+  const moduleModels = {
+    syntax: "Name each binding and literal first; most beginner snippets become clear once you know what value each identifier currently holds.",
+    expressions: "Read operators by precedence and short-circuit rules before reading the domain names around them.",
+    control: "Treat the snippet as a path through possible branches: only executed statements can affect the final state.",
+    functions: "Read parameters, closure variables, and return values as three separate channels of information.",
+    collections: "Identify the collection shape first, then track whether the operation reads, transforms, filters, mutates, or builds a new collection.",
+    data: "Separate parsing, normalization, validation, and formatting; these often look similar but answer different questions.",
+    oop_modules: "Track which names are exported, imported, constructed, or looked up on an instance or prototype.",
+    async: "Separate scheduling from completion; the line that starts work is often not the line that receives the result.",
+    node: "Read Node.js snippets around resources: environment, files, network requests, streams, processes, and cleanup.",
+    advanced: "Look for the hidden control point: a wrapper, proxy, cache, queue, factory, or context object often changes when work actually runs.",
+  };
+
+  return moduleModels[card.module] ?? "Read the snippet by naming the values, following execution order, and checking the final observable effect.";
+}
+
+function readingCuesFor(card) {
+  const code = card.code;
+  const lines = code.split("\n");
+  const cues = [
+    `Pattern: ${card.topicLabel}; identify the language feature before getting distracted by the sample domain names.`,
+  ];
+
+  if (lines.length >= 8) {
+    cues.push("First skim for initialization, repeated work, branch exits, and the final return/log/throw; then reread details inside that frame.");
+  } else {
+    cues.push("Start with the left side of declarations, assignments, or parameters so every later identifier has a known source.");
+  }
+  if (/\bconst\b|\blet\b|\bvar\b/.test(code)) {
+    cues.push("For each binding, ask whether the name is newly declared, reassigned later, or only used to hold an intermediate value.");
+  }
+  if (/\breturn\b/.test(code)) {
+    cues.push("The return statement is the main answer; earlier lines usually prepare the value returned there.");
+  }
+  if (code.includes("console.log")) {
+    cues.push("For console output, follow only the code path that reaches the log call and preserve the exact order of logged lines.");
+  }
+  if (/\bif\b|\belse\b|\bswitch\b|\?/.test(code)) {
+    cues.push("Evaluate branch conditions with the concrete values shown before reading statements inside each branch.");
+  }
+  if (/\bfor\b|\bwhile\b|for await/.test(code)) {
+    cues.push("Track loop variables and any accumulator after one iteration; repeated iterations usually apply the same rule.");
+  }
+  if (/\btry\b|\bcatch\b|\bthrow\b/.test(code)) {
+    cues.push("Mark where normal control flow can switch to error flow, and whether the snippet recovers or rethrows.");
+  }
+  if (/\basync\b|\bawait\b|\.then\(|\.catch\(|Promise\./.test(code)) {
+    cues.push("Separate the promise object from its eventual fulfilled or rejected value.");
+  }
+  if (/\bmap\(|\bfilter\(|\breduce\(|\bfind\(|\bsome\(|\bevery\(|\bflatMap\(/.test(code)) {
+    cues.push("For collection callbacks, read the callback parameters as item, index, or accumulator roles rather than ordinary local variables.");
+  }
+  if (/\bthis\b|\.bind\(|\.call\(|\.apply\(/.test(code)) {
+    cues.push("Resolve this from the call site or binding operation before interpreting property reads inside the function.");
+  }
+  if (/\bimport\b|\bexport\b|require\(|module\.exports/.test(code)) {
+    cues.push("Separate module loading from local execution: imported names may be live bindings, cached modules, or plain CommonJS values.");
+  }
+  if (/process\.|fs\.|http\.|Readable|Writable|EventEmitter|Buffer/.test(code)) {
+    cues.push("For Node.js APIs, identify which operation touches the outside world and where errors or cleanup are handled.");
+  }
+
+  const moduleCues = {
+    syntax: "Check whether the line creates a value, names a value, or merely reads a value that already exists.",
+    expressions: "When operators are chained, group the expression before deciding the final value.",
+    control: "Only the selected path matters for state changes, console output, and thrown errors.",
+    functions: "Keep caller-supplied arguments separate from closed-over variables and locally created variables.",
+    collections: "Watch for whether the original collection is mutated or a new collection is returned.",
+    data: "Notice whether the code changes the representation, the meaning, or only the display form of data.",
+    oop_modules: "Read the public surface separately from private state, prototype lookup, or module boundaries.",
+    async: "Look for work that starts immediately versus work that runs after the current stack finishes.",
+    node: "Node snippets often combine JavaScript control flow with operating-system or network side effects.",
+    advanced: "Identify the abstraction boundary first; many advanced patterns redirect a call without changing the caller's syntax.",
+  };
+  cues.push(moduleCues[card.module]);
+
+  return uniqueList(cues);
+}
+
+function nuancesFor(card) {
+  const code = card.code;
+  const nuances = [];
+
+  if (card.topic.startsWith("complex-")) {
+    nuances.push("Do not mentally refactor this while reading; trace the code as written, including temporary variables, repeated checks, and mutation order.");
+  }
+  if (/\bconst\b/.test(code)) {
+    nuances.push("const protects the binding from reassignment; it does not make arrays, objects, maps, or sets immutable.");
+  }
+  if (/\blet\b/.test(code)) {
+    nuances.push("let is block-scoped and can be reassigned, so later writes in the same block can change what the name means.");
+  }
+  if (/\bvar\b/.test(code)) {
+    nuances.push("var is function-scoped and hoisted, which can make reads before assignment produce undefined instead of a reference error.");
+  }
+  if (code.includes("===")) {
+    nuances.push("Strict equality compares without coercing types, so the value and type both matter.");
+  }
+  if (code.includes("==") && !code.includes("===")) {
+    nuances.push("Loose equality may coerce types before comparing, so read it more cautiously than strict equality.");
+  }
+  if (code.includes("||")) {
+    nuances.push("|| falls back on any falsy value, including empty string, 0, false, null, undefined, and NaN.");
+  }
+  if (code.includes("??")) {
+    nuances.push("?? falls back only for null or undefined, preserving valid falsy values like 0 and empty strings.");
+  }
+  if (code.includes("?.")) {
+    nuances.push("Optional chaining stops the property access at null or undefined, but later operations on the result may still need checks.");
+  }
+  if (code.includes("...")) {
+    nuances.push("Spread syntax copies one level; nested objects and arrays are still shared unless they are copied separately.");
+  }
+  if (/\bsort\(/.test(code)) {
+    nuances.push("Array sort mutates the array in place unless the code copies first with spread, slice, or toSorted.");
+  }
+  if (/\breduce\(/.test(code)) {
+    nuances.push("With reduce, the callback return value becomes the next accumulator; forgetting to return changes the whole result.");
+  }
+  if (/\bforEach\(/.test(code) && /\basync\b/.test(code)) {
+    nuances.push("forEach does not await async callbacks, so surrounding code can continue before those callbacks finish.");
+  }
+  if (/\bmap\(/.test(code)) {
+    nuances.push("map is for transforming every item into a returned value; side effects inside map are a reading smell.");
+  }
+  if (/\bfilter\(/.test(code)) {
+    nuances.push("filter keeps the original item when the predicate is truthy; it does not transform the item.");
+  }
+  if (/\bMap\b/.test(code)) {
+    nuances.push("Map keys are compared by identity for objects and by value for primitives.");
+  }
+  if (/\bSet\b/.test(code)) {
+    nuances.push("Set removes duplicate values, but object duplicates only collapse when they are the exact same object reference.");
+  }
+  if (/\bJSON\.parse\b/.test(code)) {
+    nuances.push("JSON.parse can throw, so production code often surrounds it with validation or try/catch.");
+  }
+  if (/\bJSON\.stringify\b/.test(code)) {
+    nuances.push("JSON.stringify omits undefined object properties and applies replacers before producing text.");
+  }
+  if (/\bDate\b/.test(code)) {
+    nuances.push("Date objects represent instants in time, while display strings can shift with timezone and locale choices.");
+  }
+  if (/\bRegExp\b|(?:^|[=(,\s])\/(?![/*])(?:\\.|[^/\n])+\/[dgimsuy]*/m.test(code)) {
+    nuances.push("Regex code is easiest to read by separating the pattern, flags, and method such as test, match, replace, or matchAll.");
+  }
+  if (/\bthis\b/.test(code)) {
+    nuances.push("this is determined by how a function is called, except arrow functions which capture this from the surrounding scope.");
+  }
+  if (/\basync\b|\bawait\b/.test(code)) {
+    nuances.push("An exception thrown inside async code becomes a rejected promise unless it is caught inside that async function.");
+  }
+  if (/Promise\.all\(/.test(code)) {
+    nuances.push("Promise.all starts from already-created promises and rejects as soon as one input rejects.");
+  }
+  if (/Promise\.allSettled\(/.test(code)) {
+    nuances.push("Promise.allSettled waits for every input and returns status objects instead of throwing on the first rejection.");
+  }
+  if (/process\.env/.test(code)) {
+    nuances.push("Environment variables arrive as strings or undefined, so numeric and boolean config usually needs explicit parsing.");
+  }
+  if (/EventEmitter|\.on\(|\.emit\(/.test(code)) {
+    nuances.push("Event-driven code separates registration time from emit time; handlers run only when the matching event is emitted.");
+  }
+  if (/Buffer|Readable|Writable|pipeline/.test(code)) {
+    nuances.push("Stream and buffer code often handles chunks, backpressure, and errors separately from the high-level data goal.");
+  }
+  if (/Proxy|Reflect/.test(code)) {
+    nuances.push("Proxy and Reflect can make ordinary property access run custom code, so read traps before trusting the surface syntax.");
+  }
+  if (code.includes("console.log")) {
+    nuances.push("The console result shown here assumes the snippet runs exactly as written and that runtime-dependent inputs match the notes.");
+  }
+
+  const moduleNuances = {
+    syntax: "Small syntax choices often change scope, mutability, or runtime errors even when the visible values look similar.",
+    expressions: "Operator order is not decoration; it determines which operands are evaluated and what value flows forward.",
+    control: "Branch and loop code is best checked by walking one concrete execution path, not by reading every line as equally active.",
+    functions: "A function body is inert until called, but closures remember the outer variables that existed when the function was created.",
+    collections: "Collection methods differ sharply between read-only queries, transformations, and in-place mutation.",
+    data: "Data code often has edge cases around missing values, invalid formats, encoding, timezone, and locale.",
+    oop_modules: "Class and module syntax can hide lookup rules, live bindings, private fields, and shared prototypes.",
+    async: "Async code usually has two correctness questions: what value resolves, and when the continuation runs.",
+    node: "Node.js snippets are often constrained by resource lifetime, error events, process state, and filesystem or network behavior.",
+    advanced: "Advanced patterns are easier to parse when you locate the indirection point before following the business logic.",
+  };
+  nuances.push(moduleNuances[card.module]);
+
+  return uniqueList(nuances);
+}
+
 function renderBack(card) {
   const annotationItems = card.annotations
     .map((note, index) => `<li><strong>Line ${index + 1}:</strong> ${sentence(escapeHtml(note))}</li>`)
@@ -436,9 +675,12 @@ function renderBack(card) {
 
   return [
     `<p><strong>Intent:</strong> ${sentence(escapeHtml(card.intent))}</p>`,
+    `<p><strong>Read it as:</strong> ${sentence(escapeHtml(mentalModelFor(card)))}</p>`,
     `<p><strong>Annotated code:</strong></p>`,
     codeBlock(card.code),
     `<ol>${annotationItems}</ol>`,
+    renderListSection("Reading cues", readingCuesFor(card)),
+    renderListSection("Nuance and pitfalls", nuancesFor(card)),
     renderConsoleOutput(card),
     `<p><strong>Common use cases:</strong></p>`,
     `<ul>${uses}</ul>`,
@@ -3536,6 +3778,15 @@ const moduleTopicMap = {
 
 function validate(cards) {
   const errors = [];
+  const requiredBackSections = [
+    "Intent:",
+    "Read it as:",
+    "Annotated code:",
+    "Reading cues:",
+    "Nuance and pitfalls:",
+    "Common use cases:",
+  ];
+
   if (cards.length !== TARGET_COUNT) {
     errors.push(`Expected ${TARGET_COUNT} cards, got ${cards.length}`);
   }
@@ -3553,6 +3804,9 @@ function validate(cards) {
     }
     seenFronts.set(card.front, { index, card });
     if (!card.intent || card.useCases.length < 3) errors.push(`Card ${index + 1} lacks required back matter`);
+    for (const section of requiredBackSections) {
+      if (!back.includes(section)) errors.push(`Card ${index + 1} is missing back section ${section}`);
+    }
   }
 
   if (errors.length) {

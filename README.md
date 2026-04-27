@@ -76,8 +76,10 @@ Direct local import on Android is also possible if you copy `dist/javascript-cod
 Each note has:
 
 - Front: a code snippet rendered as HTML.
-- Back: intent, annotated code line by line, console output when the front contains `console.log`, and common use cases.
+- Back: intent, a "read it as" mental model, annotated code line by line, targeted reading cues, nuance and pitfall notes, console output when the front contains `console.log`, and common use cases.
 - Tags: module, level, and topic tags.
+
+The back matter is generated for every card, not just advanced cards. This gives beginners a consistent reading routine while still adding higher-level cautions for async behavior, mutation, coercion, closures, object identity, Node.js resources, and production-style unrefactored snippets.
 
 ## Coverage
 
