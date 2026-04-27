@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-const OUTPUT = resolve("dist/javascript-code-reading-3000.tsv");
-const APKG_OUTPUT = resolve("dist/javascript-code-reading-3000.apkg");
-const SUMMARY = resolve("dist/javascript-code-reading-3000.summary.json");
-const TARGET_COUNT = 3000;
+const OUTPUT = resolve("dist/javascript-code-reading-5000.tsv");
+const APKG_OUTPUT = resolve("dist/javascript-code-reading-5000.apkg");
+const SUMMARY = resolve("dist/javascript-code-reading-5000.summary.json");
+const TARGET_COUNT = 5000;
 const CARDS_PER_TOPIC = 10;
 const DECK_ID = 1777242703000;
 const MODEL_ID = 1777242703001;
@@ -15,16 +15,16 @@ const CARD_ID_START = 1777242708000;
 const FIELD_SEPARATOR = "\x1f";
 
 const modules = [
-  { key: "syntax", label: "Syntax and values", level: 1, target: 300 },
-  { key: "expressions", label: "Expressions and operators", level: 2, target: 300 },
-  { key: "control", label: "Control flow", level: 3, target: 300 },
-  { key: "functions", label: "Functions, scope, and closures", level: 4, target: 300 },
-  { key: "collections", label: "Arrays, objects, maps, and sets", level: 5, target: 300 },
-  { key: "data", label: "Strings, numbers, dates, regex, and JSON", level: 6, target: 300 },
-  { key: "oop_modules", label: "Classes, prototypes, and modules", level: 7, target: 300 },
-  { key: "async", label: "Promises, async code, and concurrency", level: 8, target: 300 },
-  { key: "node", label: "Node.js runtime, files, HTTP, and streams", level: 9, target: 300 },
-  { key: "advanced", label: "Advanced JavaScript and Node.js patterns", level: 10, target: 300 },
+  { key: "syntax", label: "Syntax and values", level: 1, target: 500 },
+  { key: "expressions", label: "Expressions and operators", level: 2, target: 500 },
+  { key: "control", label: "Control flow", level: 3, target: 500 },
+  { key: "functions", label: "Functions, scope, and closures", level: 4, target: 500 },
+  { key: "collections", label: "Arrays, objects, maps, and sets", level: 5, target: 500 },
+  { key: "data", label: "Strings, numbers, dates, regex, and JSON", level: 6, target: 500 },
+  { key: "oop_modules", label: "Classes, prototypes, and modules", level: 7, target: 500 },
+  { key: "async", label: "Promises, async code, and concurrency", level: 8, target: 500 },
+  { key: "node", label: "Node.js runtime, files, HTTP, and streams", level: 9, target: 500 },
+  { key: "advanced", label: "Advanced JavaScript and Node.js patterns", level: 10, target: 500 },
 ];
 
 const identifiers = [
@@ -280,6 +280,151 @@ function tagsFor(card) {
     .join(" ");
 }
 
+function linesOutput(lines) {
+  return { kind: "lines", lines: lines.map(String) };
+}
+
+function noteOutput(text) {
+  return { kind: "note", text };
+}
+
+function noOutput(text = "No console output is produced because the console.log call is inside code that is only defined, not invoked by this snippet.") {
+  return { kind: "none", text };
+}
+
+function consoleOutputFor(card) {
+  if (!card.code.includes("console.log")) return null;
+
+  const i = card.seed;
+  const entity = word(i);
+  const list = plural(i);
+  const propNames = ["name", "status", "role", "email", "title"];
+  const prop = pick(propNames, i);
+  const computedProp = pick(propNames, i + 2);
+  const status = pick(statuses, i);
+  const method = pick(methods, i);
+  const stop = i + 2;
+
+  switch (card.topic) {
+    case "const-binding":
+      return linesOutput([title(i)]);
+    case "let-reassignment":
+      return linesOutput([pick(statuses, i + 3)]);
+    case "undefined-check":
+      return linesOutput(["true"]);
+    case "array-literal":
+      return linesOutput(["3"]);
+    case "property-access":
+      return linesOutput([prop === "name" ? title(i) : status]);
+    case "computed-property-access":
+      return linesOutput([computedProp === "name" ? title(i) : pick(statuses, i + 1)]);
+    case "if-statement":
+      return i > 0 ? linesOutput(["Show badge"]) : noOutput("No console output is produced because unread is 0 and the if block does not run.");
+    case "if-else":
+      return linesOutput([i % 2 === 0 ? "Start" : "Skip"]);
+    case "else-if-chain":
+      if (status === "failed") return linesOutput([`Retry ${i + 1}`]);
+      if (status === "done") return linesOutput(["Archive"]);
+      return linesOutput(["Wait"]);
+    case "switch-statement":
+      return linesOutput([`${method === "GET" ? "Read" : "Write"} /${list}`]);
+    case "for-loop":
+      return linesOutput(Array.from({ length: i + 3 }, (_, index) => index));
+    case "for-of-loop":
+      return linesOutput([title(i), title(i + 1)]);
+    case "for-in-loop":
+      return linesOutput([`id ${i + 1}`, "active true"]);
+    case "try-catch":
+      return noteOutput("Logs the SyntaxError message produced by JSON.parse for the invalid JSON string.");
+    case "break-continue":
+      return linesOutput(Array.from({ length: stop }, (_, n) => n).filter((n) => n % 2 === 1));
+    case "default-parameter":
+      return linesOutput([`[${pick(["info", "warn", "error", "debug"], i)}] Started ${i + 1}`]);
+    case "callback-basic":
+      return linesOutput([title(i), title(i + 1)]);
+    case "commonjs-require":
+      return linesOutput([`object ${i + 1}`]);
+    case "promise-then":
+      return linesOutput([(i + 1) * 2]);
+    case "set-timeout-promise":
+      return linesOutput(["done"]);
+    case "async-generator":
+      return linesOutput([i + 1, i + 2]);
+    case "microtask-queue":
+      return linesOutput([`A${i + 1}`, `C${i + 1}`, `B${i + 1}`]);
+    case "process-env":
+      return noteOutput(`Logs process.env.${pick(envNames, i)} when it is set; otherwise logs the fallback value shown in the snippet.`);
+    case "process-argv":
+      return noteOutput(`Logs "Running <command>", where <command> is the first user-supplied CLI argument or "help-${i + 1}" when omitted.`);
+    case "event-emitter":
+      return linesOutput([title(i)]);
+    case "async-local-storage":
+      return linesOutput([String(i + 1)]);
+    case "var-hoisting":
+      return linesOutput(["undefined"]);
+    case "temporal-dead-zone":
+      return linesOutput([String(i + 1)]);
+    case "symbol-key":
+      return linesOutput([`secret-${i + 1}`]);
+    case "short-circuit-call":
+      return linesOutput([`sync ${entity}`]);
+    case "void-operator":
+      return linesOutput([entity, "undefined"]);
+    case "early-continue":
+      return noteOutput(`Runtime-dependent: logs each active ${singular(list).replace(/\d+/g, "")}.id from ${list}.`);
+    case "switch-fallthrough":
+      return status === "new" || status === "queued" ? linesOutput(["pending"]) : noOutput(`No console output is produced because "${status}" does not match the shown cases.`);
+    case "for-await-loop":
+      return noteOutput("Runtime-dependent: logs chunk.length once for each chunk yielded by stream.");
+    case "range-loop":
+      return linesOutput([i + 1, i + 2, i + 3]);
+    case "callback-error-first":
+      return noOutput();
+    case "tap-helper":
+      return linesOutput([String(i + 1)]);
+    case "omit-field":
+      return noteOutput("Runtime-dependent: if user is defined, logs safeUser after removing the password property.");
+    case "json-replacer":
+      return noteOutput("Runtime-dependent: if user is defined, logs JSON for user with the password field omitted.");
+    case "html-escape":
+      return noteOutput("Runtime-dependent: if value is defined, logs value with &, <, and > replaced by HTML entities.");
+    case "slugify":
+      return linesOutput([`${title(i)} ${word(i + 7)}`.toLowerCase().replace(/\s+/g, "-")]);
+    case "side-effect-import":
+      return linesOutput(["registered"]);
+    case "circular-import-read":
+      return noteOutput("Runtime-dependent: logs the current value of the imported live binding named ready when the microtask runs.");
+    case "async-foreach-pitfall":
+      return linesOutput(["scheduled"]);
+    case "node-next-tick":
+      return linesOutput([`A${i + 1}`, `C${i + 1}`, `B${i + 1}`]);
+    case "set-immediate":
+      return linesOutput([`now ${i + 1}`, `later ${i + 1}`]);
+    case "exec-file":
+      return noteOutput("Runtime-dependent: logs stdout from `node --version` when the child process exits without error.");
+    case "worker-message":
+      return noteOutput("Runtime-dependent: logs the result message sent back by the worker.");
+    case "sqlite-query-shape":
+      return noteOutput("Runtime-dependent: logs rows.length for the database query result.");
+    case "decorator-wrapper":
+      return noteOutput("Runtime-dependent: logs the elapsed time in milliseconds for the wrapped async function.");
+    case "reflect-get":
+      return noteOutput(`Runtime-dependent: logs Reflect.get(target, "${pick(["id", "name", "status", "email", "role", "total", "createdAt", "updatedAt"], i)}", receiver).`);
+    default:
+      return noteOutput("The snippet contains console.log; the logged value depends on the runtime values that reach that call.");
+  }
+}
+
+function renderConsoleOutput(card) {
+  const output = consoleOutputFor(card);
+  if (!output) return "";
+  if (output.kind === "lines") {
+    const text = output.lines.length ? output.lines.join("\n") : "(no output)";
+    return `<p><strong>Console output:</strong></p>${codeBlock(text)}`;
+  }
+  return `<p><strong>Console output:</strong> ${sentence(escapeHtml(output.text))}</p>`;
+}
+
 function renderBack(card) {
   const annotationItems = card.annotations
     .map((note, index) => `<li><strong>Line ${index + 1}:</strong> ${sentence(escapeHtml(note))}</li>`)
@@ -294,6 +439,7 @@ function renderBack(card) {
     `<p><strong>Annotated code:</strong></p>`,
     codeBlock(card.code),
     `<ol>${annotationItems}</ol>`,
+    renderConsoleOutput(card),
     `<p><strong>Common use cases:</strong></p>`,
     `<ul>${uses}</ul>`,
   ].join("");
@@ -1364,7 +1510,7 @@ const advancedTopics = [
   }),
 ];
 
-function templateVars(i) {
+function templateVars(i, moduleInfo = null) {
   const list = plural(i).replace(/\d+/g, "");
   const item = safeIdentifier(singular(list));
   const entity = word(i);
@@ -1399,8 +1545,11 @@ function templateVars(i) {
     path: `./data/${entity}-${i + 1}.json`,
     url: `${pick(urls, i)}?sample=${i + 1}`,
     tag: pick(htmlTags, i),
-    env: pick(envNames, i),
-  };
+	    env: pick(envNames, i),
+    moduleKey: moduleInfo?.key?.replace(/[^a-zA-Z0-9_$]/g, "_") ?? "module",
+    ModuleKey: upperFirst(moduleInfo?.key?.replace(/[^a-zA-Z0-9]/g, "") ?? "Module"),
+    moduleLabel: moduleInfo?.label ?? "Module",
+	  };
 }
 
 function applyTemplate(value, vars) {
@@ -1412,7 +1561,7 @@ function applyTemplate(value, vars) {
 
 function templateTopic(key, label, lines, intent, annotations, useCases) {
   return topic(key, label, CARDS_PER_TOPIC, (moduleInfo, topicInfo, i) => {
-    const vars = templateVars(i);
+    const vars = templateVars(i, moduleInfo);
     const codeLines = lines.map((line) => applyTemplate(line, vars));
     const notes = annotations.map((note) => applyTemplate(note, vars));
     if (!lines.join("\n").includes("{n}")) {
@@ -2872,21 +3021,517 @@ const extraAdvancedTopics = templateTopics(useCaseSets.advanced, [
   },
 ]);
 
+const complexReadingSpecs = [
+  {
+    key: "nested-normalization",
+    label: "Complex nested normalization",
+    lines: [
+      "const context = \"{moduleKey}:{entity}:{n}\";",
+      "const output = {};",
+      "for (const key of Object.keys(input)) {",
+      "  const value = input[key];",
+      "  if (value == null) output[key] = null;",
+      "  else if (Array.isArray(value)) output[key] = value.filter(Boolean).map(String);",
+      "  else output[key] = String(value).trim();",
+      "}",
+    ],
+    intent: "Practice reading a branchy normalization loop that mutates an output object",
+    annotations: [
+      "Stores a context label so this complex case is tied to {moduleLabel}.",
+      "Creates the mutable object that will receive normalized fields.",
+      "Loops over each key in input.",
+      "Reads the current value for the current key.",
+      "Preserves nullish values as null.",
+      "For arrays, removes falsy items and stringifies the remaining items.",
+      "For every other value, stringifies and trims it.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "status-flag-maze",
+    label: "Complex status flag maze",
+    lines: [
+      "let state = { status: \"{status}\", dirty: false, retries: {n} };",
+      "if (state.status !== \"done\") {",
+      "  state.dirty = true;",
+      "  if (state.retries > 2 && state.status === \"failed\") state.status = \"queued\";",
+      "  else if (state.retries === 0) state.status = \"paused\";",
+      "}",
+      "const nextState = { ...state, scope: \"{moduleKey}\" };",
+    ],
+    intent: "Practice tracing nested status updates before an immutable copy is created",
+    annotations: [
+      "Creates a mutable state object with status, dirty, and retries.",
+      "Runs the update block only when the status is not done.",
+      "Marks the state as dirty.",
+      "Requeues failed state when retry count is high enough.",
+      "Pauses the state when there are no retries.",
+      "Closes the outer status check.",
+      "Creates a shallow copy and adds the module scope.",
+    ],
+  },
+  {
+    key: "unrefactored-router",
+    label: "Complex unrefactored router",
+    lines: [
+      "let handler;",
+      "if (request.method === \"GET\" && request.url.startsWith(\"/{moduleKey}\")) {",
+      "  handler = readHandler;",
+      "} else if (request.method === \"POST\" && request.headers[\"content-type\"]?.includes(\"json\")) {",
+      "  handler = writeHandler;",
+      "} else {",
+      "  handler = notFoundHandler;",
+      "}",
+      "const response = await handler(request);",
+    ],
+    intent: "Practice reading route selection that mixes method, URL, and header checks",
+    annotations: [
+      "Declares a handler variable that will be assigned by branches.",
+      "Checks for a GET request under the module path.",
+      "Chooses the read handler for that branch.",
+      "Otherwise checks for a JSON POST request.",
+      "Chooses the write handler for the POST branch.",
+      "Starts the fallback branch.",
+      "Chooses the not-found handler.",
+      "Closes the branch chain.",
+      "Runs whichever handler was selected.",
+    ],
+  },
+  {
+    key: "mutable-aggregation",
+    label: "Complex mutable aggregation",
+    lines: [
+      "const totals = { count: 0, sum: 0, skipped: 0, scope: \"{moduleKey}\" };",
+      "for (const row of rows) {",
+      "  if (!row || row.disabled) { totals.skipped += 1; continue; }",
+      "  const amount = Number(row.amount ?? 0);",
+      "  totals.count += 1;",
+      "  totals.sum += Number.isFinite(amount) ? amount : 0;",
+      "}",
+      "totals.average = totals.count ? totals.sum / totals.count : 0;",
+    ],
+    intent: "Practice reading an accumulator object that is mutated across a loop",
+    annotations: [
+      "Creates a totals accumulator with counters and module scope.",
+      "Loops over input rows.",
+      "Skips missing or disabled rows while counting them.",
+      "Normalizes the row amount to a number.",
+      "Counts accepted rows.",
+      "Adds finite amounts and ignores invalid numbers.",
+      "Closes the loop.",
+      "Computes an average after all rows have been processed.",
+    ],
+  },
+  {
+    key: "validation-collector",
+    label: "Complex validation collector",
+    lines: [
+      "const errors = [];",
+      "for (const rule of rules) {",
+      "  const value = payload[rule.field];",
+      "  if (rule.required && (value === undefined || value === \"\")) errors.push(`${rule.field}:required`);",
+      "  if (value && rule.pattern && !rule.pattern.test(String(value))) errors.push(`${rule.field}:pattern`);",
+      "}",
+      "if (errors.length) throw new Error(errors.join(\",\"));",
+    ],
+    intent: "Practice reading validation code that accumulates multiple failures",
+    annotations: [
+      "Creates an array that will collect validation errors.",
+      "Loops through validation rules.",
+      "Reads the payload value for the current rule's field.",
+      "Adds a required-field error when the field is missing or empty.",
+      "Adds a pattern error when a present value fails its regex.",
+      "Closes the loop.",
+      "Throws one combined error if any validation failed.",
+    ],
+  },
+  {
+    key: "parser-state-machine",
+    label: "Complex parser state machine",
+    lines: [
+      "let mode = \"key\";",
+      "let key = \"\";",
+      "const pairs = {};",
+      "for (const char of source) {",
+      "  if (mode === \"key\" && char === \"=\") { mode = \"value\"; pairs[key] = \"\"; continue; }",
+      "  if (mode === \"value\" && char === \"&\") { mode = \"key\"; key = \"\"; continue; }",
+      "  if (mode === \"key\") key += char; else pairs[key] += char;",
+      "}",
+    ],
+    intent: "Practice reading a small hand-written parser with mutable state",
+    annotations: [
+      "Starts in key-reading mode.",
+      "Creates the current key buffer.",
+      "Creates the output object.",
+      "Loops over each character in source.",
+      "Switches to value mode when a key ends.",
+      "Switches back to key mode when a value ends.",
+      "Appends the character to either the key buffer or current value.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "cache-request-coalescing",
+    label: "Complex request coalescing",
+    lines: [
+      "const key = `${\"{moduleKey}\"}:${id}`;",
+      "if (cache.has(key)) return cache.get(key);",
+      "if (pending.has(key)) return pending.get(key);",
+      "const promise = load(id).finally(() => pending.delete(key));",
+      "pending.set(key, promise);",
+      "const value = await promise;",
+      "cache.set(key, value);",
+      "return value;",
+    ],
+    intent: "Practice reading code that deduplicates concurrent requests and then caches the result",
+    annotations: [
+      "Builds a cache key from module scope and id.",
+      "Returns an already cached value when present.",
+      "Returns an in-flight promise when the same request is already running.",
+      "Starts the load and schedules pending cleanup after settlement.",
+      "Stores the in-flight promise.",
+      "Awaits the shared promise.",
+      "Caches the resolved value.",
+      "Returns the loaded value.",
+    ],
+  },
+  {
+    key: "retry-state-object",
+    label: "Complex retry state object",
+    lines: [
+      "const meta = { attempt: 0, lastError: null, scope: \"{moduleKey}\" };",
+      "while (meta.attempt < {n3}) {",
+      "  try { return await run(meta); }",
+      "  catch (error) {",
+      "    meta.attempt += 1;",
+      "    meta.lastError = error;",
+      "  }",
+      "}",
+      "throw meta.lastError;",
+    ],
+    intent: "Practice reading retry logic that stores mutable metadata between attempts",
+    annotations: [
+      "Creates retry metadata.",
+      "Allows attempts until the configured limit is reached.",
+      "Runs the operation and returns immediately on success.",
+      "Catches a failed attempt.",
+      "Increments the attempt count.",
+      "Stores the latest error.",
+      "Closes the catch block.",
+      "Closes the retry loop.",
+      "Throws the final captured error after all attempts fail.",
+    ],
+  },
+  {
+    key: "permission-matrix",
+    label: "Complex permission matrix",
+    lines: [
+      "const matrix = permissions[user.role] ?? {};",
+      "const resourceRules = matrix[resource.type] ?? [];",
+      "let allowed = false;",
+      "for (const rule of resourceRules) {",
+      "  if (rule.action !== action) continue;",
+      "  allowed = rule.ownerOnly ? resource.ownerId === user.id : true;",
+      "  if (allowed) break;",
+      "}",
+    ],
+    intent: "Practice reading authorization logic spread across role, resource, and action checks",
+    annotations: [
+      "Reads the permission matrix for the user's role.",
+      "Reads the rules for the current resource type.",
+      "Starts with denied access.",
+      "Loops through rules for the resource.",
+      "Skips rules for other actions.",
+      "Allows access directly or only when the user owns the resource.",
+      "Stops scanning once access is allowed.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "checkout-mutation",
+    label: "Complex checkout mutation",
+    lines: [
+      "let subtotal = 0;",
+      "for (const item of cart.items) {",
+      "  const price = item.salePrice ?? item.price;",
+      "  subtotal += price * item.quantity;",
+      "  if (item.quantity > 10) subtotal -= price;",
+      "}",
+      "const total = Math.max(0, subtotal - (cart.credit ?? 0));",
+    ],
+    intent: "Practice reading business logic that mixes totals, discounts, and fallbacks",
+    annotations: [
+      "Initializes the running subtotal.",
+      "Loops through cart items.",
+      "Chooses sale price when present, otherwise regular price.",
+      "Adds line-item total to subtotal.",
+      "Applies a bulk discount by subtracting one unit price.",
+      "Closes the loop.",
+      "Subtracts store credit and prevents negative totals.",
+    ],
+  },
+  {
+    key: "queue-drain-loop",
+    label: "Complex queue drain loop",
+    lines: [
+      "const batch = [];",
+      "while (queue.length && batch.length < {n3}) {",
+      "  const job = queue.shift();",
+      "  if (job.cancelled) continue;",
+      "  job.startedAt = Date.now();",
+      "  batch.push(job);",
+      "}",
+      "await Promise.all(batch.map(runJob));",
+    ],
+    intent: "Practice reading queue-draining logic that mutates jobs before execution",
+    annotations: [
+      "Creates the current batch.",
+      "Drains while the queue has work and the batch is below its limit.",
+      "Removes the next job from the front of the queue.",
+      "Skips cancelled jobs.",
+      "Mutates the job with a start timestamp.",
+      "Adds the job to the batch.",
+      "Closes the drain loop.",
+      "Runs all batched jobs concurrently.",
+    ],
+  },
+  {
+    key: "tree-stack-walk",
+    label: "Complex stack-based tree walk",
+    lines: [
+      "const stack = [root];",
+      "const ids = [];",
+      "while (stack.length) {",
+      "  const node = stack.pop();",
+      "  if (!node || node.hidden) continue;",
+      "  ids.push(node.id);",
+      "  stack.push(...(node.children ?? []));",
+      "}",
+    ],
+    intent: "Practice reading an iterative tree traversal that uses a stack",
+    annotations: [
+      "Starts the stack with the root node.",
+      "Creates an output list of ids.",
+      "Loops until there are no nodes left to visit.",
+      "Takes the next node from the top of the stack.",
+      "Skips missing or hidden nodes.",
+      "Records the visible node id.",
+      "Adds children to the stack, falling back to an empty array.",
+      "Closes the traversal loop.",
+    ],
+  },
+  {
+    key: "ranked-search",
+    label: "Complex ranked search",
+    lines: [
+      "const matches = [];",
+      "for (const row of rows) {",
+      "  let score = 0;",
+      "  if (row.title?.includes(query)) score += 5;",
+      "  if (row.tags?.some(tag => query.includes(tag))) score += 2;",
+      "  if (score > 0) matches.push({ row, score });",
+      "}",
+      "matches.sort((a, b) => b.score - a.score);",
+    ],
+    intent: "Practice reading scoring logic before sorting search results",
+    annotations: [
+      "Creates the array of matches.",
+      "Loops through candidate rows.",
+      "Starts each row with score zero.",
+      "Adds a title-match score.",
+      "Adds a tag-match score.",
+      "Keeps only rows with positive score.",
+      "Closes the loop.",
+      "Sorts matches from highest score to lowest.",
+    ],
+  },
+  {
+    key: "migration-loop",
+    label: "Complex migration loop",
+    lines: [
+      "for (const record of records) {",
+      "  if (record.version >= {n3}) continue;",
+      "  record.previousVersion = record.version;",
+      "  record.version = {n3};",
+      "  record.updatedAt = new Date().toISOString();",
+      "  await save(record);",
+      "}",
+    ],
+    intent: "Practice reading in-place data migration logic",
+    annotations: [
+      "Loops through records.",
+      "Skips records that are already at the target version.",
+      "Stores the old version for traceability.",
+      "Mutates the record to the target version.",
+      "Updates the timestamp.",
+      "Saves the migrated record.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "chunked-reducer",
+    label: "Complex chunked reducer",
+    lines: [
+      "const chunks = [];",
+      "for (let index = 0; index < items.length; index += {n2}) {",
+      "  const slice = items.slice(index, index + {n2});",
+      "  chunks.push({ index, size: slice.length, items: slice });",
+      "}",
+      "const nonEmpty = chunks.filter(chunk => chunk.size > 0);",
+    ],
+    intent: "Practice reading index math in batching code",
+    annotations: [
+      "Creates the chunks array.",
+      "Advances through items by a fixed chunk size.",
+      "Takes a slice for the current chunk.",
+      "Stores chunk metadata and items.",
+      "Closes the loop.",
+      "Keeps only chunks that contain items.",
+    ],
+  },
+  {
+    key: "event-buffer-flush",
+    label: "Complex event buffer flush",
+    lines: [
+      "buffer.push(event);",
+      "if (buffer.length >= {n3} || event.urgent) {",
+      "  const payload = buffer.splice(0, buffer.length);",
+      "  await send(payload);",
+      "}",
+    ],
+    intent: "Practice reading buffering logic that flushes by size or urgency",
+    annotations: [
+      "Adds the incoming event to the buffer.",
+      "Flushes when the buffer is large enough or the event is urgent.",
+      "Removes every buffered event into a payload array.",
+      "Sends the payload asynchronously.",
+      "Closes the flush branch.",
+    ],
+  },
+  {
+    key: "header-parser",
+    label: "Complex header parser",
+    lines: [
+      "const headers = {};",
+      "for (const line of rawHeaders.split(\"\\n\")) {",
+      "  const index = line.indexOf(\":\");",
+      "  if (index === -1) continue;",
+      "  const name = line.slice(0, index).trim().toLowerCase();",
+      "  headers[name] = line.slice(index + 1).trim();",
+      "}",
+    ],
+    intent: "Practice reading string parsing code with indexes and normalization",
+    annotations: [
+      "Creates the output object.",
+      "Splits raw header text into lines.",
+      "Finds the separator for the current line.",
+      "Skips malformed lines without a separator.",
+      "Extracts and normalizes the header name.",
+      "Extracts and stores the trimmed header value.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "scheduler-buckets",
+    label: "Complex scheduler buckets",
+    lines: [
+      "const buckets = new Map();",
+      "for (const task of tasks) {",
+      "  const minute = Math.floor(task.runAt / 60000);",
+      "  const bucket = buckets.get(minute) ?? [];",
+      "  bucket.push(task);",
+      "  buckets.set(minute, bucket);",
+      "}",
+    ],
+    intent: "Practice reading scheduling code that groups tasks by time bucket",
+    annotations: [
+      "Creates a Map from minute bucket to tasks.",
+      "Loops through scheduled tasks.",
+      "Computes the minute bucket from a millisecond timestamp.",
+      "Reads the existing bucket or creates an empty one.",
+      "Adds the task to the bucket.",
+      "Stores the bucket back in the Map.",
+      "Closes the loop.",
+    ],
+  },
+  {
+    key: "feature-flag-resolution",
+    label: "Complex feature flag resolution",
+    lines: [
+      "let enabled = defaults[flag] ?? false;",
+      "if (user.overrides?.[flag] !== undefined) enabled = user.overrides[flag];",
+      "else if (groups.some(group => rollouts[group]?.includes(flag))) enabled = true;",
+      "const decision = { flag, enabled, scope: \"{moduleKey}\" };",
+    ],
+    intent: "Practice reading layered feature-flag resolution",
+    annotations: [
+      "Starts with the default flag value or false.",
+      "Uses a user-specific override when present.",
+      "Otherwise enables the flag when any group rollout includes it.",
+      "Creates the final decision object.",
+    ],
+  },
+  {
+    key: "html-token-scan",
+    label: "Complex HTML token scan",
+    lines: [
+      "const tokens = [];",
+      "let cursor = 0;",
+      "while (cursor < html.length) {",
+      "  const open = html.indexOf(\"<\", cursor);",
+      "  if (open === -1) break;",
+      "  const close = html.indexOf(\">\", open + 1);",
+      "  if (close === -1) break;",
+      "  tokens.push(html.slice(open + 1, close));",
+      "  cursor = close + 1;",
+      "}",
+    ],
+    intent: "Practice reading low-level scanning code with cursor updates",
+    annotations: [
+      "Creates the token output array.",
+      "Starts scanning from the beginning.",
+      "Continues while the cursor is inside the string.",
+      "Finds the next opening angle bracket.",
+      "Stops when no opening bracket remains.",
+      "Finds the matching closing angle bracket.",
+      "Stops when the tag is incomplete.",
+      "Stores the text inside the brackets.",
+      "Moves the cursor past the closing bracket.",
+      "Closes the loop.",
+    ],
+  },
+];
+
+function complexTopicsFor(prefix, defaultUseCases) {
+  return templateTopics(defaultUseCases, complexReadingSpecs.map((spec) => ({
+    ...spec,
+    key: `complex-${prefix}-${spec.key}`,
+    label: `${spec.label}`,
+    lines: [`const readingScope = "{moduleKey}:${spec.key}";`, ...spec.lines],
+    annotations: [`Names this unrefactored reading case so repeated patterns stay tied to {moduleLabel}.`, ...spec.annotations],
+    useCases: spec.useCases ?? [
+      "Practicing multi-line code reading",
+      "Following mutable state through branches",
+      "Understanding unrefactored production-style snippets",
+    ],
+  })));
+}
+
 function inlineRaw(value) {
   return value;
 }
 
 const moduleTopicMap = {
-  syntax: [...syntaxTopics, ...extraSyntaxTopics],
-  expressions: [...expressionTopics, ...extraExpressionTopics],
-  control: [...controlTopics, ...extraControlTopics],
-  functions: [...functionTopics, ...extraFunctionTopics],
-  collections: [...collectionTopics, ...extraCollectionTopics],
-  data: [...dataTopics, ...extraDataTopics],
-  oop_modules: [...moduleTopics, ...extraModuleTopics],
-  async: [...asyncTopics, ...extraAsyncTopics],
-  node: [...nodeTopics, ...extraNodeTopics],
-  advanced: [...advancedTopics, ...extraAdvancedTopics],
+  syntax: [...syntaxTopics, ...extraSyntaxTopics, ...complexTopicsFor("syntax", useCaseSets.variables)],
+  expressions: [...expressionTopics, ...extraExpressionTopics, ...complexTopicsFor("expressions", useCaseSets.expressions)],
+  control: [...controlTopics, ...extraControlTopics, ...complexTopicsFor("control", useCaseSets.control)],
+  functions: [...functionTopics, ...extraFunctionTopics, ...complexTopicsFor("functions", useCaseSets.functions)],
+  collections: [...collectionTopics, ...extraCollectionTopics, ...complexTopicsFor("collections", useCaseSets.collections)],
+  data: [...dataTopics, ...extraDataTopics, ...complexTopicsFor("data", useCaseSets.data)],
+  oop_modules: [...moduleTopics, ...extraModuleTopics, ...complexTopicsFor("oop-modules", useCaseSets.modules)],
+  async: [...asyncTopics, ...extraAsyncTopics, ...complexTopicsFor("async", useCaseSets.async)],
+  node: [...nodeTopics, ...extraNodeTopics, ...complexTopicsFor("node", useCaseSets.node)],
+  advanced: [...advancedTopics, ...extraAdvancedTopics, ...complexTopicsFor("advanced", useCaseSets.advanced)],
 };
 
 function validate(cards) {
@@ -2920,7 +3565,7 @@ function renderDeck(cards) {
     "#separator:tab",
     "#html:true",
     "#notetype:Basic",
-    "#deck:JavaScript Code Reading::3000 Snippets",
+    "#deck:JavaScript Code Reading::5000 Snippets",
     "#tags:javascript code-reading",
     "#tags column:3",
   ];
@@ -3052,7 +3697,7 @@ function createCollectionMetadata(mod) {
   };
   const decks = {
     1: createDeck(1, "Default", mod),
-    [DECK_ID]: createDeck(DECK_ID, "JavaScript Code Reading::3000 Snippets", mod),
+    [DECK_ID]: createDeck(DECK_ID, "JavaScript Code Reading::5000 Snippets", mod),
   };
   const dconf = {
     1: createDeckConfig(),
