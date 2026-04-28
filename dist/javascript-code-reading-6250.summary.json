@@ -1,0 +1,77 @@
+{
+  "output": "dist/javascript-code-reading-6250.tsv",
+  "apkg": "dist/javascript-code-reading-6250.apkg",
+  "cards": 6250,
+  "topics": 625,
+  "cardsPerTopic": 10,
+  "interviewCodeCards": 1000,
+  "quizCards": 250,
+  "modules": [
+    {
+      "key": "syntax",
+      "label": "Syntax and values",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "expressions",
+      "label": "Expressions and operators",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "control",
+      "label": "Control flow",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "functions",
+      "label": "Functions, scope, and closures",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "collections",
+      "label": "Arrays, objects, maps, and sets",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "data",
+      "label": "Strings, numbers, dates, regex, and JSON",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "oop_modules",
+      "label": "Classes, prototypes, and modules",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "async",
+      "label": "Promises, async code, and concurrency",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "node",
+      "label": "Node.js runtime, files, HTTP, and streams",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "advanced",
+      "label": "Advanced JavaScript and Node.js patterns",
+      "cards": 500,
+      "topics": 50
+    },
+    {
+      "key": "interview",
+      "label": "Interview-style patterns and problem readings",
+      "cards": 1250,
+      "topics": 125
+    }
+  ]
+}

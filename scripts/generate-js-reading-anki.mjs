@@ -3,16 +3,19 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-const OUTPUT = resolve("dist/javascript-code-reading-6000.tsv");
-const APKG_OUTPUT = resolve("dist/javascript-code-reading-6000.apkg");
-const SUMMARY = resolve("dist/javascript-code-reading-6000.summary.json");
-const TARGET_COUNT = 6000;
+const OUTPUT = resolve("dist/javascript-code-reading-6250.tsv");
+const APKG_OUTPUT = resolve("dist/javascript-code-reading-6250.apkg");
+const SUMMARY = resolve("dist/javascript-code-reading-6250.summary.json");
+const TARGET_COUNT = 6250;
 const CARDS_PER_TOPIC = 10;
+const INTERVIEW_CODE_TOPIC_COUNT = 100;
+const INTERVIEW_QUIZ_TOPIC_COUNT = 25;
 const DECK_ID = 1777242703000;
 const MODEL_ID = 1777242703001;
 const NOTE_ID_START = 1777242704000;
 const CARD_ID_START = 1777242708000;
 const FIELD_SEPARATOR = "\x1f";
+const DECK_NAME = "JavaScript Code Reading::6250 Snippets";
 
 const modules = [
   { key: "syntax", label: "Syntax and values", level: 1, target: 500 },
@@ -25,7 +28,7 @@ const modules = [
   { key: "async", label: "Promises, async code, and concurrency", level: 8, target: 500 },
   { key: "node", label: "Node.js runtime, files, HTTP, and streams", level: 9, target: 500 },
   { key: "advanced", label: "Advanced JavaScript and Node.js patterns", level: 10, target: 500 },
-  { key: "interview", label: "Interview-style patterns and problem readings", level: 11, target: 1000 },
+  { key: "interview", label: "Interview-style patterns and problem readings", level: 11, target: 1250 },
 ];
 
 const identifiers = [
@@ -273,10 +276,12 @@ function tagsFor(card) {
   return [
     "javascript",
     "code-reading",
+    card.kind === "quiz" ? "multiple-choice" : null,
     `module-${card.module}`,
     `level-${String(card.level).padStart(2, "0")}`,
     card.topic,
   ]
+    .filter(Boolean)
     .map((tag) => tag.replace(/[^a-zA-Z0-9_-]/g, "-"))
     .join(" ");
 }
@@ -444,6 +449,33 @@ function renderListSection(title, items) {
     .map((item) => `<li>${sentence(escapeHtml(item))}</li>`)
     .join("");
   return `<p><strong>${escapeHtml(title)}:</strong></p><ul>${body}</ul>`;
+}
+
+function choiceLabel(index) {
+  return String.fromCharCode(65 + index);
+}
+
+function renderChoices(choices) {
+  return `<ol type="A">${choices.map((choice) => `<li>${escapeHtml(choice)}</li>`).join("")}</ol>`;
+}
+
+function quizFront(code, question, choices) {
+  return [
+    codeBlock(code),
+    `<p><strong>Question:</strong> ${sentence(escapeHtml(question))}</p>`,
+    renderChoices(choices),
+  ].join("");
+}
+
+function renderQuizAnswer(card) {
+  if (card.kind !== "quiz") return "";
+  const { choices, answerIndex, explanation } = card.quiz;
+  const label = choiceLabel(answerIndex);
+  const answer = choices[answerIndex];
+  return [
+    `<p><strong>Answer:</strong> ${label}. ${sentence(escapeHtml(answer))}</p>`,
+    `<p><strong>Why:</strong> ${sentence(escapeHtml(explanation))}</p>`,
+  ].join("");
 }
 
 function mentalModelFor(card) {
@@ -680,6 +712,7 @@ function renderBack(card) {
   return [
     `<p><strong>Intent:</strong> ${sentence(escapeHtml(card.intent))}</p>`,
     `<p><strong>Read it as:</strong> ${sentence(escapeHtml(mentalModelFor(card)))}</p>`,
+    renderQuizAnswer(card),
     `<p><strong>Annotated code:</strong></p>`,
     codeBlock(card.code),
     `<ol>${annotationItems}</ol>`,
@@ -711,6 +744,24 @@ function makeCard(moduleInfo, topic, seed, code, intent, annotations, useCases) 
     intent,
     annotations,
     useCases,
+  };
+}
+
+function makeQuizCard(moduleInfo, topic, seed, code, question, choices, answerIndex, explanation, intent, annotations, useCases) {
+  const card = makeCard(moduleInfo, topic, seed, code, intent, annotations, useCases);
+  if (answerIndex < 0 || answerIndex >= choices.length) {
+    throw new Error(`Invalid quiz answer index for ${moduleInfo.key}/${topic.key}`);
+  }
+  return {
+    ...card,
+    kind: "quiz",
+    front: quizFront(code, question, choices),
+    quiz: {
+      question,
+      choices,
+      answerIndex,
+      explanation,
+    },
   };
 }
 
@@ -1836,6 +1887,36 @@ function templateTopics(defaultUseCases, specs) {
     spec.annotations,
     spec.useCases ?? defaultUseCases,
   ));
+}
+
+function quizTopic(key, label, spec) {
+  return topic(key, label, CARDS_PER_TOPIC, (moduleInfo, topicInfo, i) => {
+    const vars = templateVars(i, moduleInfo);
+    const codeLines = spec.lines.map((line) => applyTemplate(line, vars));
+    const notes = spec.annotations.map((note) => applyTemplate(note, vars));
+    const choices = spec.choices.map((choice) => applyTemplate(choice, vars));
+    if (!spec.lines.join("\n").includes("{n}") && !spec.question.includes("{n}") && !spec.choices.join("\n").includes("{n}")) {
+      codeLines.push(`// quiz case ${i + 1}`);
+      notes.push(`Marks this as quiz case ${i + 1}; the preceding lines are the rule being tested.`);
+    }
+    return makeQuizCard(
+      moduleInfo,
+      topicInfo,
+      i,
+      codeLines.join("\n"),
+      applyTemplate(spec.question, vars),
+      choices,
+      spec.answerIndex,
+      applyTemplate(spec.explanation, vars),
+      applyTemplate(spec.intent, vars),
+      notes,
+      spec.useCases ?? useCaseSets.interview,
+    );
+  });
+}
+
+function quizTopics(specs) {
+  return specs.map((spec) => quizTopic(spec.key, spec.label, spec));
 }
 
 const extraSyntaxTopics = templateTopics(useCaseSets.variables, [
@@ -3768,6 +3849,998 @@ function inlineRaw(value) {
   return value;
 }
 
+const interviewCodeTopics = templateTopics(useCaseSets.interview, [
+  {
+    key: "interview-typeof-null",
+    label: "Interview typeof null",
+    lines: ["const sample = [null, {n}];", "const kind = typeof sample[0];"],
+    intent: "Recognize the long-standing typeof null edge case",
+    annotations: ["Creates an array whose first value is null.", "Stores the typeof result for null, which is the string object."],
+  },
+  {
+    key: "interview-primitive-method",
+    label: "Interview primitive method call",
+    lines: ["const name = \"{label}\";", "const normalized = name.toLowerCase().toUpperCase();"],
+    intent: "Read a method call on a string primitive through JavaScript's temporary wrapper behavior",
+    annotations: ["Stores a string primitive.", "Calls string methods in sequence and stores the transformed string."],
+  },
+  {
+    key: "interview-plus-coercion",
+    label: "Interview plus coercion",
+    lines: ["const left = \"{n}\";", "const result = left + 2;"],
+    intent: "Recognize that plus performs string concatenation when one operand is a string",
+    annotations: ["Stores a numeric-looking string.", "Uses plus with a string operand, so the number is coerced to text."],
+  },
+  {
+    key: "interview-minus-coercion",
+    label: "Interview minus coercion",
+    lines: ["const left = \"{n3}\";", "const result = left - 1;"],
+    intent: "Recognize numeric coercion in arithmetic operators other than plus",
+    annotations: ["Stores a numeric-looking string.", "Subtracts one, causing JavaScript to coerce the string to a number."],
+  },
+  {
+    key: "interview-boolean-number",
+    label: "Interview boolean numeric coercion",
+    lines: ["const enabled = true;", "const score = enabled + {n};"],
+    intent: "Read boolean-to-number coercion in arithmetic",
+    annotations: ["Stores the boolean true.", "Adds true to a number, where true is coerced to 1."],
+  },
+  {
+    key: "interview-nan-check",
+    label: "Interview NaN check",
+    lines: ["const raw = \"item-{n}\";", "const invalid = Number.isNaN(Number(raw));"],
+    intent: "Use Number.isNaN after explicit numeric conversion",
+    annotations: ["Stores text that cannot become a valid number.", "Converts it with Number and checks whether the converted result is NaN."],
+  },
+  {
+    key: "interview-truthy-string",
+    label: "Interview truthy string",
+    lines: ["const input = \"{status}\";", "const shouldRun = Boolean(input);"],
+    intent: "Recognize that non-empty strings are truthy",
+    annotations: ["Stores a non-empty status string.", "Converts the string to its boolean truthiness."],
+  },
+  {
+    key: "interview-strict-loose-pair",
+    label: "Interview strict versus loose equality",
+    lines: ["const loose = {n} == \"{n}\";", "const strict = {n} === \"{n}\";"],
+    intent: "Contrast loose equality coercion with strict equality",
+    annotations: ["Compares a number to a numeric string with coercion allowed.", "Compares the same values without coercion, so the different types matter."],
+  },
+  {
+    key: "interview-and-value",
+    label: "Interview logical AND value",
+    lines: ["const user = \"{label}\";", "const result = user && \"active\";"],
+    intent: "Read logical AND as a value selector, not only as a boolean operator",
+    annotations: ["Stores a truthy username.", "Returns the second operand because the first operand is truthy."],
+  },
+  {
+    key: "interview-or-default",
+    label: "Interview OR fallback",
+    lines: ["const userInput = \"\";", "const displayName = userInput || \"{label}\";"],
+    intent: "Read OR fallback behavior for falsy values",
+    annotations: ["Stores an empty string, which is falsy.", "Uses the fallback label because the first operand is falsy."],
+  },
+  {
+    key: "interview-var-loop-closure",
+    label: "Interview var loop closure",
+    lines: ["const readers = [];", "for (var index = 0; index < 3; index += 1) {", "  readers.push(() => index);", "}", "const result = readers[0]();"],
+    intent: "Recognize that var loop callbacks share one function-scoped binding",
+    annotations: ["Creates an array of callback functions.", "Loops with a var binding shared across all iterations.", "Stores a callback that reads index later.", "Closes the loop after index reaches 3.", "Calls the first callback, which reads the final shared index value."],
+  },
+  {
+    key: "interview-let-loop-closure",
+    label: "Interview let loop closure",
+    lines: ["const readers = [];", "for (let index = 0; index < 3; index += 1) {", "  readers.push(() => index);", "}", "const result = readers[0]();"],
+    intent: "Recognize that let loop callbacks capture a per-iteration binding",
+    annotations: ["Creates an array of callback functions.", "Loops with a let binding that is fresh for each iteration.", "Stores a callback that reads the current iteration's index later.", "Closes the loop after three callbacks are stored.", "Calls the first callback, which reads the first iteration's index."],
+  },
+  {
+    key: "interview-block-shadow",
+    label: "Interview block shadowing",
+    lines: ["const status = \"outer\";", "{", "  const status = \"inner-{n}\";", "}", "const result = status;"],
+    intent: "Read block scope shadowing without confusing the two bindings",
+    annotations: ["Declares the outer status binding.", "Opens a nested block.", "Declares a separate inner binding with the same name.", "Closes the block, making the inner binding unavailable.", "Reads the unchanged outer binding."],
+  },
+  {
+    key: "interview-function-hoist-call",
+    label: "Interview function hoisting call",
+    lines: ["const result = add({n}, 1);", "function add(a, b) {", "  return a + b;", "}"],
+    intent: "Recognize that function declarations can be called before their source position",
+    annotations: ["Calls add before the function declaration appears in the file.", "Declares the add function.", "Returns the sum of its two arguments.", "Closes the function declaration."],
+  },
+  {
+    key: "interview-function-expression-call",
+    label: "Interview function expression call",
+    lines: ["const add = function (a, b) {", "  return a + b;", "};", "const result = add({n}, 1);"],
+    intent: "Read a function expression after the variable has been initialized",
+    annotations: ["Stores an anonymous function in add.", "Returns the sum of the function arguments.", "Closes the function expression assignment.", "Calls the initialized function."],
+  },
+  {
+    key: "interview-parse-try-catch",
+    label: "Interview parse try/catch",
+    lines: ["let parsed;", "try {", "  parsed = JSON.parse(\"not-json-{n}\");", "} catch (error) {", "  parsed = { valid: false, message: error.name };", "}"],
+    intent: "Follow error recovery when JSON parsing fails",
+    annotations: ["Declares a variable that will hold the outcome.", "Starts a protected block.", "Attempts to parse invalid JSON text.", "Moves here when parsing throws.", "Stores a fallback object with error metadata.", "Closes the catch block."],
+  },
+  {
+    key: "interview-finally-cleanup",
+    label: "Interview finally cleanup",
+    lines: ["let cleaned = false;", "try {", "  if ({n} > 0) throw new Error(\"stop\");", "} catch (error) {", "  cleaned = error.message === \"stop\";", "} finally {", "  cleaned = true;", "}"],
+    intent: "Recognize that finally runs after try or catch",
+    annotations: ["Initializes cleanup state.", "Starts a try block.", "Throws for the shown positive number.", "Catches the thrown error.", "Sets cleanup state based on the error message.", "Starts the finally block.", "Runs cleanup regardless of the earlier path.", "Closes the finally block."],
+  },
+  {
+    key: "interview-throw-guard",
+    label: "Interview throw guard",
+    lines: ["function requireName(value) {", "  if (!value) throw new TypeError(\"name required\");", "  return value.trim();", "}", "const result = requireName(\" {label} \");"],
+    intent: "Read a guard clause that throws before normal work",
+    annotations: ["Declares a function that validates a value.", "Throws when the value is falsy.", "Returns a trimmed string for valid input.", "Closes the function.", "Calls the guard with a non-empty string."],
+  },
+  {
+    key: "interview-typeof-undeclared",
+    label: "Interview typeof undeclared",
+    lines: ["const missing = typeof notDeclared === \"undefined\";", "const result = missing ? \"safe\" : \"unsafe-{n}\";"],
+    intent: "Recognize that typeof can check an undeclared name without throwing",
+    annotations: ["Checks an undeclared identifier using typeof and compares the result to undefined.", "Chooses safe because the typeof check succeeds."],
+  },
+  {
+    key: "interview-strict-freeze",
+    label: "Interview strict frozen object",
+    lines: ["\"use strict\";", "const settings = Object.freeze({ retries: {n} });", "const sameRetries = settings.retries === {n};"],
+    intent: "Read strict mode setup with a frozen object check",
+    annotations: ["Enables strict mode for the file or function scope.", "Creates a frozen settings object.", "Checks that the stored property still has the expected value."],
+  },
+  {
+    key: "interview-computed-property",
+    label: "Interview computed property",
+    lines: ["const key = \"score\";", "const user = { [key]: {n} };", "const result = user.score;"],
+    intent: "Read object creation with a computed property name",
+    annotations: ["Stores the property name in a variable.", "Creates an object whose property name comes from that variable.", "Reads the property using ordinary dot notation."],
+  },
+  {
+    key: "interview-constructor-function",
+    label: "Interview constructor function",
+    lines: ["function User(name) {", "  this.name = name;", "}", "const user = new User(\"{label}\");", "const result = user.name;"],
+    intent: "Recognize new with a constructor function and this assignment",
+    annotations: ["Declares a constructor function.", "Assigns the argument to the new object's name property.", "Closes the constructor.", "Creates an instance with new.", "Reads the property stored during construction."],
+  },
+  {
+    key: "interview-object-create",
+    label: "Interview Object.create",
+    lines: ["const base = { role: \"reader\" };", "const user = Object.create(base);", "user.name = \"{label}\";", "const result = user.role;"],
+    intent: "Read prototype-based lookup with Object.create",
+    annotations: ["Creates a prototype object.", "Creates a user object whose prototype is base.", "Adds an own property to the user.", "Reads role through the prototype chain."],
+  },
+  {
+    key: "interview-object-assign-shallow",
+    label: "Interview Object.assign shallow copy",
+    lines: ["const source = { nested: { count: {n} } };", "const copy = Object.assign({}, source);", "copy.nested.count += 1;", "const result = source.nested.count;"],
+    intent: "Recognize shallow copying of nested object references",
+    annotations: ["Creates an object with a nested object.", "Copies only the top-level properties into a new object.", "Mutates the shared nested object through the copy.", "Reads the mutated nested value through the original object."],
+  },
+  {
+    key: "interview-spread-shallow",
+    label: "Interview spread shallow copy",
+    lines: ["const original = { tags: [\"a\", \"b\"] };", "const clone = { ...original };", "clone.tags.push(\"{status}\");", "const result = original.tags.length;"],
+    intent: "Read object spread as a shallow copy",
+    annotations: ["Creates an object with an array property.", "Copies top-level properties into a new object.", "Mutates the shared array through the clone.", "Reads the original object's array length after the shared mutation."],
+  },
+  {
+    key: "interview-class-method",
+    label: "Interview class method",
+    lines: ["class Counter {", "  constructor(start) { this.value = start; }", "  next() { return this.value + 1; }", "}", "const result = new Counter({n}).next();"],
+    intent: "Read class construction followed by a method call",
+    annotations: ["Declares a class.", "Stores the constructor argument on the instance.", "Defines a method that returns one more than the stored value.", "Closes the class.", "Creates an instance and immediately calls the method."],
+  },
+  {
+    key: "interview-private-field",
+    label: "Interview private field",
+    lines: ["class Box {", "  #value = {n};", "  read() { return this.#value; }", "}", "const result = new Box().read();"],
+    intent: "Read a private class field through a public method",
+    annotations: ["Declares a class.", "Creates a private field that cannot be read with ordinary property access.", "Defines a method that returns the private field.", "Closes the class.", "Creates an instance and reads the private value through the method."],
+  },
+  {
+    key: "interview-getter-setter",
+    label: "Interview getter setter",
+    lines: ["const account = {", "  _name: \"{label}\",", "  get name() { return this._name.trim(); },", "  set name(value) { this._name = value; }", "};", "account.name = \" {label2} \";", "const result = account.name;"],
+    intent: "Read property syntax that invokes getter and setter functions",
+    annotations: ["Starts an object literal.", "Stores backing state.", "Defines a getter used when reading account.name.", "Defines a setter used when assigning account.name.", "Closes the object literal.", "Assigns through the setter.", "Reads through the getter, which trims the stored value."],
+  },
+  {
+    key: "interview-this-implicit",
+    label: "Interview implicit this",
+    lines: ["const user = {", "  name: \"{label}\",", "  read() { return this.name; }", "};", "const result = user.read();"],
+    intent: "Resolve this from an object method call",
+    annotations: ["Starts an object literal.", "Stores a name property.", "Defines a method that reads this.name.", "Closes the object literal.", "Calls the method through user, so this is user."],
+  },
+  {
+    key: "interview-bind-explicit",
+    label: "Interview explicit bind",
+    lines: ["function readName() { return this.name; }", "const readUser = readName.bind({ name: \"{label}\" });", "const result = readUser();"],
+    intent: "Read bind as fixing this before a later call",
+    annotations: ["Declares a function that reads this.name.", "Creates a new function with this bound to the object literal.", "Calls the bound function."],
+  },
+  {
+    key: "interview-array-push-return",
+    label: "Interview push return value",
+    lines: ["const items = [\"a\", \"b\"];", "const length = items.push(\"{status}\");", "const result = [length, items.length];"],
+    intent: "Recognize that push mutates and returns the new length",
+    annotations: ["Creates a two-item array.", "Pushes a value and stores the returned length.", "Stores both the push return value and the array's current length."],
+  },
+  {
+    key: "interview-pop-shift",
+    label: "Interview pop and shift",
+    lines: ["const queue = [\"first\", \"middle\", \"last\"];", "const first = queue.shift();", "const last = queue.pop();", "const result = [first, last, queue.length];"],
+    intent: "Read removals from both ends of an array",
+    annotations: ["Creates a three-item array.", "Removes and stores the first item.", "Removes and stores the last remaining item.", "Stores the removed values and final length."],
+  },
+  {
+    key: "interview-splice-insert",
+    label: "Interview splice insert",
+    lines: ["const items = [\"a\", \"c\"];", "items.splice(1, 0, \"b-{n}\");", "const result = items.join(\"|\");"],
+    intent: "Read splice as an in-place insertion when delete count is zero",
+    annotations: ["Creates an array with a missing middle item.", "Inserts a value at index 1 without deleting anything.", "Joins the mutated array into a display string."],
+  },
+  {
+    key: "interview-splice-remove",
+    label: "Interview splice remove",
+    lines: ["const items = [\"a\", \"b\", \"c\", \"d\"];", "const removed = items.splice(1, 2);", "const result = [removed.join(\"\"), items.join(\"\")];"],
+    intent: "Read splice as an in-place removal that also returns removed items",
+    annotations: ["Creates a four-item array.", "Removes two items starting at index 1 and stores them.", "Stores text representations of removed items and remaining items."],
+  },
+  {
+    key: "interview-slice-copy",
+    label: "Interview slice copy",
+    lines: ["const items = [\"a\", \"b\", \"c\", \"d\"];", "const middle = items.slice(1, 3);", "const result = [middle.length, items.length];"],
+    intent: "Recognize that slice returns a copy and does not mutate the original array",
+    annotations: ["Creates a four-item array.", "Copies items from index 1 up to but not including index 3.", "Compares the copied length with the unchanged original length."],
+  },
+  {
+    key: "interview-delete-array-hole",
+    label: "Interview delete array hole",
+    lines: ["const items = [\"a\", \"b\", \"c\"];", "delete items[1];", "const result = [items.length, 1 in items];"],
+    intent: "Recognize that delete leaves an array hole instead of reindexing",
+    annotations: ["Creates a three-item array.", "Deletes the property at index 1 without changing array length.", "Stores the length and whether index 1 still exists."],
+  },
+  {
+    key: "interview-length-truncate",
+    label: "Interview length truncate",
+    lines: ["const items = [1, 2, 3, 4];", "items.length = 2;", "const result = items.join(\"-\");"],
+    intent: "Read array length assignment as truncation",
+    annotations: ["Creates a four-item array.", "Sets length to 2, removing items beyond index 1.", "Joins the remaining items."],
+  },
+  {
+    key: "interview-sort-lexicographic",
+    label: "Interview default sort",
+    lines: ["const values = [10, 2, 1];", "values.sort();", "const result = values.join(\",\");"],
+    intent: "Recognize that default sort compares strings",
+    annotations: ["Creates numeric values.", "Sorts without a comparator, so values are compared as strings.", "Joins the mutated array."],
+  },
+  {
+    key: "interview-sort-numeric",
+    label: "Interview numeric sort",
+    lines: ["const values = [10, 2, {n}];", "values.sort((a, b) => a - b);", "const result = values[0];"],
+    intent: "Read a numeric ascending sort comparator",
+    annotations: ["Creates numeric values.", "Sorts numbers by subtracting b from a.", "Reads the smallest value after sorting."],
+  },
+  {
+    key: "interview-includes-nan",
+    label: "Interview includes NaN",
+    lines: ["const values = [NaN, {n}];", "const foundByIndex = values.indexOf(NaN) !== -1;", "const foundByIncludes = values.includes(NaN);"],
+    intent: "Contrast indexOf and includes when searching for NaN",
+    annotations: ["Creates an array containing NaN.", "Uses indexOf, which cannot find NaN because strict equality does not match NaN.", "Uses includes, which can find NaN."],
+  },
+  {
+    key: "interview-matrix-access",
+    label: "Interview matrix access",
+    lines: ["const grid = [[1, 2], [3, {n3}]];", "const result = grid[1][1];"],
+    intent: "Read nested array indexing in a two-dimensional array",
+    annotations: ["Creates a nested array that acts like a grid.", "Reads row index 1 and then column index 1."],
+  },
+  {
+    key: "interview-matrix-sum-loop",
+    label: "Interview matrix loop sum",
+    lines: ["const grid = [[1, 2], [3, {n}]];", "let total = 0;", "for (const row of grid) {", "  for (const value of row) total += value;", "}", "const result = total;"],
+    intent: "Follow nested iteration through a two-dimensional array",
+    annotations: ["Creates a grid of numbers.", "Initializes the running total.", "Loops over each row.", "Adds each value in the current row.", "Closes the outer loop.", "Stores the final total."],
+  },
+  {
+    key: "interview-map-transform",
+    label: "Interview map transform",
+    lines: ["const values = [1, 2, {n}];", "const doubled = values.map(value => value * 2);"],
+    intent: "Read map as creating a transformed array",
+    annotations: ["Creates an array of numbers.", "Builds a new array where every value is multiplied by two."],
+  },
+  {
+    key: "interview-filter-predicate",
+    label: "Interview filter predicate",
+    lines: ["const values = [0, 1, {n}, {n2}];", "const positive = values.filter(value => value > 0);"],
+    intent: "Read filter as keeping original items that pass a predicate",
+    annotations: ["Creates an array with zero and positive numbers.", "Keeps only values greater than zero."],
+  },
+  {
+    key: "interview-reduce-sum",
+    label: "Interview reduce sum",
+    lines: ["const values = [1, 2, {n}];", "const total = values.reduce((sum, value) => sum + value, 0);"],
+    intent: "Read reduce as an accumulator-based sum",
+    annotations: ["Creates an array of numbers.", "Starts at zero and adds each value into the accumulator."],
+  },
+  {
+    key: "interview-reduce-group",
+    label: "Interview reduce grouping",
+    lines: ["const rows = [{ type: \"a\" }, { type: \"b\" }, { type: \"a\" }];", "const counts = rows.reduce((acc, row) => {", "  acc[row.type] = (acc[row.type] ?? 0) + 1;", "  return acc;", "}, {});"],
+    intent: "Read reduce as building an object keyed by item data",
+    annotations: ["Creates rows with repeated type values.", "Starts a reduce callback with an accumulator object.", "Increments the count for the current row's type.", "Returns the accumulator for the next iteration.", "Starts reduce with an empty object."],
+  },
+  {
+    key: "interview-some-every",
+    label: "Interview some and every",
+    lines: ["const values = [1, {n2}, {n3}];", "const hasEven = values.some(value => value % 2 === 0);", "const allPositive = values.every(value => value > 0);"],
+    intent: "Compare any-match and all-match array predicates",
+    annotations: ["Creates positive numbers.", "Checks whether at least one value is even.", "Checks whether every value is positive."],
+  },
+  {
+    key: "interview-find-first",
+    label: "Interview find first match",
+    lines: ["const users = [{ id: 1 }, { id: {n2} }, { id: {n3} }];", "const user = users.find(item => item.id > {n});"],
+    intent: "Read find as returning the first matching item",
+    annotations: ["Creates ordered user-like objects.", "Returns the first item whose id is greater than the threshold."],
+  },
+  {
+    key: "interview-chain-map-filter-reduce",
+    label: "Interview map filter reduce chain",
+    lines: ["const total = [1, 2, 3, {n}]", "  .map(value => value * 2)", "  .filter(value => value > 4)", "  .reduce((sum, value) => sum + value, 0);"],
+    intent: "Read a chained array pipeline one stage at a time",
+    annotations: ["Starts with an array of numbers.", "Transforms each number by doubling it.", "Keeps doubled values greater than four.", "Adds the remaining values into one total."],
+  },
+  {
+    key: "interview-flat-array",
+    label: "Interview flat array",
+    lines: ["const nested = [[1], [2, {n}], []];", "const values = nested.flat();"],
+    intent: "Read flat as removing one array nesting level",
+    annotations: ["Creates an array containing nested arrays.", "Flattens one level into a single array."],
+  },
+  {
+    key: "interview-flat-map",
+    label: "Interview flatMap",
+    lines: ["const phrases = [\"a b\", \"c {status}\"];", "const words = phrases.flatMap(text => text.split(\" \"));"],
+    intent: "Read flatMap as mapping each item and flattening the mapped arrays",
+    annotations: ["Creates an array of space-separated strings.", "Splits each phrase into words and flattens the arrays of words."],
+  },
+  {
+    key: "interview-destructure-rest",
+    label: "Interview array destructuring rest",
+    lines: ["const values = [\"first\", \"second\", \"third\", \"{status}\"];", "const [head, ...tail] = values;", "const result = [head, tail.length];"],
+    intent: "Read array destructuring with a rest binding",
+    annotations: ["Creates an ordered array.", "Binds the first item to head and the remaining items to tail.", "Stores the first value and the count of remaining values."],
+  },
+  {
+    key: "interview-function-declaration",
+    label: "Interview function declaration",
+    lines: ["function multiply(a, b) {", "  return a * b;", "}", "const result = multiply({n}, 2);"],
+    intent: "Read a named function declaration and call",
+    annotations: ["Declares a function with two parameters.", "Returns their product.", "Closes the function.", "Calls the function with a generated number and 2."],
+  },
+  {
+    key: "interview-arrow-object-return",
+    label: "Interview arrow object return",
+    lines: ["const makeUser = name => ({ name, active: true });", "const user = makeUser(\"{label}\");", "const result = user.active;"],
+    intent: "Recognize an arrow function returning an object literal expression",
+    annotations: ["Defines an arrow function whose parenthesized expression is an object literal.", "Calls the function with a name.", "Reads a property from the returned object."],
+  },
+  {
+    key: "interview-default-param",
+    label: "Interview default parameter",
+    lines: ["function label(value = \"{status}\") {", "  return value.toUpperCase();", "}", "const result = label();"],
+    intent: "Read a default parameter used when the caller omits an argument",
+    annotations: ["Declares a function with a default value.", "Returns the uppercased value.", "Closes the function.", "Calls the function without an argument, so the default is used."],
+  },
+  {
+    key: "interview-rest-parameter",
+    label: "Interview rest parameter",
+    lines: ["function count(first, ...rest) {", "  return rest.length;", "}", "const result = count(\"a\", \"b\", \"c\", \"{status}\");"],
+    intent: "Read a rest parameter that collects remaining arguments",
+    annotations: ["Declares a function with one named argument and a rest array.", "Returns how many arguments were collected in rest.", "Closes the function.", "Calls the function with four arguments."],
+  },
+  {
+    key: "interview-iife-scope",
+    label: "Interview IIFE scope",
+    lines: ["const result = (() => {", "  const hidden = {n};", "  return hidden + 1;", "})();"],
+    intent: "Read an immediately invoked function expression as a scoped calculation",
+    annotations: ["Creates and immediately calls an arrow function.", "Declares a local value inside the function.", "Returns one more than the local value.", "Closes and invokes the function."],
+  },
+  {
+    key: "interview-callback-transform",
+    label: "Interview callback transform",
+    lines: ["function apply(value, fn) {", "  return fn(value);", "}", "const result = apply({n}, value => value * 3);"],
+    intent: "Read a callback passed into another function",
+    annotations: ["Declares a function that receives a value and a callback.", "Calls the callback with the value and returns its result.", "Closes the helper.", "Calls the helper with a number and an arrow callback."],
+  },
+  {
+    key: "interview-returned-function",
+    label: "Interview returned function",
+    lines: ["function addBy(amount) {", "  return value => value + amount;", "}", "const addTwo = addBy(2);", "const result = addTwo({n});"],
+    intent: "Read a function that returns another function and closes over a parameter",
+    annotations: ["Declares a function that receives an amount.", "Returns an arrow function that adds the captured amount.", "Closes the outer function.", "Creates a specialized add-two function.", "Calls the returned function."],
+  },
+  {
+    key: "interview-closure-counter",
+    label: "Interview closure counter",
+    lines: ["function makeCounter() {", "  let count = {n};", "  return () => ++count;", "}", "const next = makeCounter();", "const result = [next(), next()];"],
+    intent: "Read closure state that changes across calls",
+    annotations: ["Declares a counter factory.", "Creates local mutable state.", "Returns a function that increments and reads that state.", "Closes the factory.", "Creates one counter instance.", "Calls the same closure twice."],
+  },
+  {
+    key: "interview-arrow-this-pitfall",
+    label: "Interview arrow this pitfall",
+    lines: ["const user = {", "  name: \"{label}\",", "  readLater() { return () => this.name; }", "};", "const result = user.readLater()();"],
+    intent: "Recognize arrow functions capturing this from an enclosing method",
+    annotations: ["Starts an object literal.", "Stores a name property.", "Defines a method that returns an arrow function reading this.name.", "Closes the object.", "Calls the method with this as user, then calls the returned arrow."],
+  },
+  {
+    key: "interview-query-selector",
+    label: "Interview querySelector",
+    lines: ["const button = document.querySelector(\"button.save\");", "const disabled = button?.disabled ?? true;"],
+    intent: "Read DOM selection with optional chaining and fallback behavior",
+    annotations: ["Finds the first matching save button or returns null.", "Reads disabled when a button exists, otherwise defaults to true."],
+  },
+  {
+    key: "interview-query-selector-all",
+    label: "Interview querySelectorAll",
+    lines: ["const nodes = document.querySelectorAll(\".item\");", "const texts = Array.from(nodes, node => node.textContent.trim());"],
+    intent: "Read a NodeList conversion into an array of text values",
+    annotations: ["Selects all matching DOM nodes.", "Converts the NodeList to an array while mapping each node to trimmed text."],
+  },
+  {
+    key: "interview-create-element",
+    label: "Interview createElement",
+    lines: ["const li = document.createElement(\"li\");", "li.textContent = \"{label}\";", "list.appendChild(li);"],
+    intent: "Read DOM element creation followed by insertion",
+    annotations: ["Creates a new list item element.", "Sets the text content safely.", "Appends the new element to an existing list node."],
+  },
+  {
+    key: "interview-insert-before",
+    label: "Interview insertBefore",
+    lines: ["const item = document.createElement(\"li\");", "item.textContent = \"{status}\";", "list.insertBefore(item, list.firstElementChild);"],
+    intent: "Read DOM insertion before an existing child",
+    annotations: ["Creates a new list item.", "Sets its text content.", "Inserts it before the current first element child."],
+  },
+  {
+    key: "interview-replace-child",
+    label: "Interview replaceChild",
+    lines: ["const next = document.createElement(\"span\");", "next.textContent = \"{label}\";", "parent.replaceChild(next, current);"],
+    intent: "Read DOM replacement argument order",
+    annotations: ["Creates the replacement element.", "Sets replacement text.", "Replaces current with next under the parent node."],
+  },
+  {
+    key: "interview-remove-node",
+    label: "Interview remove node",
+    lines: ["const target = document.querySelector(\"[data-id='{n}']\");", "target?.remove();"],
+    intent: "Read safe DOM removal when a node may not exist",
+    annotations: ["Selects a node by data attribute.", "Removes the node only if the query found one."],
+  },
+  {
+    key: "interview-event-listener",
+    label: "Interview event listener",
+    lines: ["button.addEventListener(\"click\", event => {", "  event.currentTarget.disabled = true;", "});"],
+    intent: "Read an event listener that mutates the clicked control",
+    annotations: ["Registers a click handler on a button.", "Disables the element that owns the listener.", "Closes the event listener callback."],
+  },
+  {
+    key: "interview-dataset-classlist",
+    label: "Interview dataset and classList",
+    lines: ["card.dataset.status = \"{status}\";", "card.classList.toggle(\"is-active\", card.dataset.status === \"active\");"],
+    intent: "Read DOM state mirrored through dataset and classList",
+    annotations: ["Stores a status string in a data attribute.", "Adds or removes a class based on whether the status is active."],
+  },
+  {
+    key: "interview-call-stack-return",
+    label: "Interview call stack return",
+    lines: ["function outer(value) {", "  return inner(value + 1);", "}", "function inner(value) {", "  return value * 2;", "}", "const result = outer({n});"],
+    intent: "Trace nested function calls through return values",
+    annotations: ["Declares the outer function.", "Calls inner with one more than the input.", "Closes outer.", "Declares the inner function.", "Returns double the received value.", "Closes inner.", "Calls outer and stores the returned result."],
+  },
+  {
+    key: "interview-microtask-schedule",
+    label: "Interview microtask schedule",
+    lines: ["const order = [];", "order.push(\"sync-{n}\");", "Promise.resolve().then(() => order.push(\"micro\"));", "order.push(\"end\");"],
+    intent: "Read promise callbacks as microtasks scheduled after synchronous code",
+    annotations: ["Creates an order array.", "Records the first synchronous step.", "Schedules a microtask that will push later.", "Records another synchronous step before the microtask runs."],
+  },
+  {
+    key: "interview-timeout-schedule",
+    label: "Interview timeout schedule",
+    lines: ["const order = [];", "setTimeout(() => order.push(\"timer\"), 0);", "order.push(\"sync-{n}\");"],
+    intent: "Read timer callbacks as later macrotask work",
+    annotations: ["Creates an order array.", "Schedules a timer callback for a later turn of the event loop.", "Records synchronous work before the timer runs."],
+  },
+  {
+    key: "interview-recursion-base",
+    label: "Interview recursion base case",
+    lines: ["function sumTo(value) {", "  if (value <= 1) return value;", "  return value + sumTo(value - 1);", "}", "const result = sumTo(3);"],
+    intent: "Trace a recursive function through its base case",
+    annotations: ["Declares a recursive summing function.", "Returns immediately for the base case.", "Adds the current value to the recursive result for value minus one.", "Closes the function.", "Calls the function with a small value that can be traced by hand."],
+  },
+  {
+    key: "interview-execution-shadow",
+    label: "Interview execution context shadowing",
+    lines: ["const value = \"global\";", "function read() {", "  const value = \"local-{n}\";", "  return value;", "}", "const result = read();"],
+    intent: "Read local scope taking precedence over an outer binding",
+    annotations: ["Declares an outer value.", "Declares a function.", "Declares a local value with the same name.", "Returns the local binding.", "Closes the function.", "Calls the function and stores its return value."],
+  },
+  {
+    key: "interview-async-callback-order",
+    label: "Interview async callback order",
+    lines: ["const queue = [];", "setTimeout(() => queue.push(\"timer\"), 0);", "queue.push(\"sync-{n}\");", "const immediate = queue.slice();"],
+    intent: "Distinguish immediate state from state after an asynchronous callback",
+    annotations: ["Creates a mutable queue.", "Schedules a callback that will mutate it later.", "Mutates the queue synchronously.", "Copies the queue before the timer callback has run."],
+  },
+  {
+    key: "interview-do-while",
+    label: "Interview do while loop",
+    lines: ["let count = 0;", "do {", "  count += 1;", "} while (count < 1);", "const result = count;"],
+    intent: "Recognize that a do while loop runs its body at least once",
+    annotations: ["Initializes the loop counter.", "Starts a do while body.", "Increments the counter inside the body.", "Checks the condition after the first body run.", "Stores the final count."],
+  },
+  {
+    key: "interview-break-continue-mix",
+    label: "Interview break and continue mix",
+    lines: ["const seen = [];", "for (let value = 0; value < 5; value += 1) {", "  if (value === 1) continue;", "  if (value === 4) break;", "  seen.push(value);", "}"],
+    intent: "Trace loop control when continue and break appear together",
+    annotations: ["Creates an array for visited values.", "Loops through values from 0 up to 4.", "Skips the rest of the iteration for value 1.", "Stops the loop entirely at value 4.", "Records values that were neither skipped nor stopped.", "Closes the loop."],
+  },
+  {
+    key: "interview-switch-fallthrough",
+    label: "Interview switch fallthrough",
+    lines: ["const actions = [];", "switch (\"{status}\") {", "  case \"new\": actions.push(\"queue\");", "  case \"ready\": actions.push(\"run\"); break;", "  default: actions.push(\"skip\");", "}"],
+    intent: "Read switch fallthrough when a case omits break",
+    annotations: ["Creates an array for actions.", "Starts a switch on a status string.", "For status new, pushes queue but does not break.", "For status ready, pushes run and then breaks.", "Handles unmatched statuses.", "Closes the switch."],
+  },
+  {
+    key: "interview-nested-ternary",
+    label: "Interview nested ternary",
+    lines: ["const score = {n3};", "const label = score > 10 ? \"high\" : score > 3 ? \"mid\" : \"low\";"],
+    intent: "Read a nested ternary by grouping each condition and fallback",
+    annotations: ["Stores a numeric score.", "Chooses high, otherwise checks the second condition before choosing mid or low."],
+  },
+  {
+    key: "interview-nullish-versus-or",
+    label: "Interview nullish versus OR",
+    lines: ["const count = 0;", "const orFallback = count || {n};", "const nullishFallback = count ?? {n};"],
+    intent: "Contrast OR fallback with nullish fallback for zero",
+    annotations: ["Stores zero, a valid but falsy number.", "Uses OR, so zero is replaced by the fallback.", "Uses nullish coalescing, so zero is preserved."],
+  },
+  {
+    key: "interview-optional-call",
+    label: "Interview optional call",
+    lines: ["const hooks = { afterSave: undefined };", "const result = hooks.afterSave?.(\"{label}\") ?? \"not-called\";"],
+    intent: "Read optional function calls when a callback may be missing",
+    annotations: ["Creates an object whose callback property is undefined.", "Calls the callback only if it exists and otherwise uses a fallback string."],
+  },
+  {
+    key: "interview-for-in-own-check",
+    label: "Interview for in own check",
+    lines: ["const object = Object.create({ inherited: true });", "object.own = \"{status}\";", "const keys = [];", "for (const key in object) {", "  if (Object.hasOwn(object, key)) keys.push(key);", "}"],
+    intent: "Read for in with an own-property filter",
+    annotations: ["Creates an object with an inherited property.", "Adds an own property.", "Creates an array for filtered keys.", "Iterates enumerable own and inherited keys.", "Keeps only keys that belong directly to the object.", "Closes the loop."],
+  },
+  {
+    key: "interview-object-keys-values",
+    label: "Interview Object keys and values",
+    lines: ["const counts = { open: {n}, closed: {n2} };", "const names = Object.keys(counts);", "const total = Object.values(counts).reduce((sum, value) => sum + value, 0);"],
+    intent: "Read Object.keys and Object.values as different views of object data",
+    annotations: ["Creates an object of counts.", "Collects the object's own enumerable property names.", "Collects the values and sums them with reduce."],
+  },
+  {
+    key: "interview-has-own-property",
+    label: "Interview hasOwn check",
+    lines: ["const settings = { theme: \"dark\" };", "const hasTheme = Object.hasOwn(settings, \"theme\");", "const hasMode = Object.hasOwn(settings, \"mode\");"],
+    intent: "Read explicit checks for whether an object owns a property",
+    annotations: ["Creates a settings object.", "Checks for a property that exists directly on the object.", "Checks for a missing property."],
+  },
+  {
+    key: "interview-instanceof",
+    label: "Interview instanceof",
+    lines: ["class Task {}", "const task = new Task();", "const result = task instanceof Task;"],
+    intent: "Read instanceof as a prototype-chain check",
+    annotations: ["Declares a class.", "Creates an instance of that class.", "Checks whether the instance's prototype chain includes Task.prototype."],
+  },
+  {
+    key: "interview-constructor-property",
+    label: "Interview constructor property",
+    lines: ["class Task {}", "const task = new Task();", "const result = task.constructor === Task;"],
+    intent: "Read the constructor property through a class instance",
+    annotations: ["Declares a class.", "Creates an instance.", "Compares the instance's constructor property to the class function."],
+  },
+  {
+    key: "interview-super-call",
+    label: "Interview super call",
+    lines: ["class Base { constructor(id) { this.id = id; } }", "class Child extends Base { constructor(id) { super(id); this.kind = \"child\"; } }", "const result = new Child({n}).id;"],
+    intent: "Read subclass construction that delegates initialization with super",
+    annotations: ["Declares a base class that stores an id.", "Declares a child class that calls super before assigning its own property.", "Creates a child and reads the id initialized by the base class."],
+  },
+  {
+    key: "interview-static-method",
+    label: "Interview static method",
+    lines: ["class Formatter {", "  static upper(value) { return value.toUpperCase(); }", "}", "const result = Formatter.upper(\"{status}\");"],
+    intent: "Recognize a static method called on the class rather than an instance",
+    annotations: ["Declares a class.", "Defines a static method on the class constructor.", "Closes the class.", "Calls the static method through the class name."],
+  },
+  {
+    key: "interview-prototype-method",
+    label: "Interview prototype method",
+    lines: ["function Item(name) { this.name = name; }", "Item.prototype.read = function () { return this.name; };", "const result = new Item(\"{label}\").read();"],
+    intent: "Read method sharing through a constructor prototype",
+    annotations: ["Declares a constructor that stores a name.", "Adds a shared read method to the constructor's prototype.", "Creates an instance and calls the prototype method."],
+  },
+  {
+    key: "interview-json-deep-copy",
+    label: "Interview JSON deep copy",
+    lines: ["const original = { nested: { count: {n} } };", "const copy = JSON.parse(JSON.stringify(original));", "copy.nested.count += 1;", "const result = original.nested.count;"],
+    intent: "Read JSON serialization as a simple deep-copy technique for plain data",
+    annotations: ["Creates a plain nested object.", "Serializes and parses it to create separate nested objects.", "Mutates the copy's nested count.", "Reads the original nested count, which did not share that nested object."],
+  },
+  {
+    key: "interview-object-destructure-default",
+    label: "Interview object destructuring default",
+    lines: ["const options = { retries: {n} };", "const { retries, timeout = 1000 } = options;", "const result = [retries, timeout];"],
+    intent: "Read object destructuring with a default for a missing property",
+    annotations: ["Creates an options object with one property.", "Extracts retries and uses a default timeout because timeout is missing.", "Stores both destructured values."],
+  },
+  {
+    key: "interview-spread-math",
+    label: "Interview spread into Math",
+    lines: ["const values = [{n}, {n2}, {n3}];", "const max = Math.max(...values);"],
+    intent: "Read spread as passing array items as separate arguments",
+    annotations: ["Creates an array of numeric values.", "Spreads the array into Math.max so each item becomes its own argument."],
+  },
+  {
+    key: "interview-reverse-string",
+    label: "Interview reverse string",
+    lines: ["const text = \"{label}\";", "const reversed = text.split(\"\").reverse().join(\"\");"],
+    intent: "Read the common split reverse join string pattern",
+    annotations: ["Stores a string.", "Turns the string into characters, reverses the array, and joins it back into text."],
+  },
+  {
+    key: "interview-palindrome-check",
+    label: "Interview palindrome check",
+    lines: ["const text = \"level\";", "const reversed = text.split(\"\").reverse().join(\"\");", "const isPalindrome = text === reversed;"],
+    intent: "Read a direct palindrome check by comparing text to its reverse",
+    annotations: ["Stores the candidate text.", "Builds the reversed text.", "Checks whether the original and reversed strings match exactly."],
+  },
+  {
+    key: "interview-frequency-count",
+    label: "Interview frequency count",
+    lines: ["const letters = \"abca\".split(\"\");", "const counts = {};", "for (const letter of letters) {", "  counts[letter] = (counts[letter] ?? 0) + 1;", "}"],
+    intent: "Read a frequency counter built with an object",
+    annotations: ["Creates an array of letters.", "Creates an object for counts.", "Loops over each letter.", "Increments the count for that letter, starting from zero when missing.", "Closes the loop."],
+  },
+  {
+    key: "interview-two-sum-map",
+    label: "Interview two sum map",
+    lines: ["const seen = new Map();", "const target = {n3};", "for (const value of [1, 2, {n2}]) {", "  const needed = target - value;", "  if (seen.has(needed)) break;", "  seen.set(value, true);", "}"],
+    intent: "Read the Map-based lookup pattern behind two-sum problems",
+    annotations: ["Creates a Map for values already seen.", "Stores the target sum.", "Loops through candidate values.", "Computes the complement needed to reach the target.", "Stops when a complement has already been seen.", "Records the current value for later iterations.", "Closes the loop."],
+  },
+  {
+    key: "interview-dedupe-set",
+    label: "Interview dedupe with Set",
+    lines: ["const values = [\"a\", \"b\", \"a\", \"{status}\"];", "const unique = [...new Set(values)];"],
+    intent: "Read Set construction followed by spread as a duplicate-removal pattern",
+    annotations: ["Creates an array with a duplicate value.", "Builds a Set to keep unique values, then spreads it back into an array."],
+  },
+  {
+    key: "interview-max-loop",
+    label: "Interview max loop",
+    lines: ["const values = [{n}, {n2}, {n3}];", "let max = -Infinity;", "for (const value of values) {", "  if (value > max) max = value;", "}"],
+    intent: "Trace a loop that tracks the maximum value seen so far",
+    annotations: ["Creates numeric values.", "Starts max lower than any real number.", "Loops over each value.", "Updates max when the current value is larger.", "Closes the loop."],
+  },
+  {
+    key: "interview-factorial-loop",
+    label: "Interview factorial loop",
+    lines: ["let product = 1;", "for (let value = 2; value <= 4; value += 1) {", "  product *= value;", "}"],
+    intent: "Read a multiplicative accumulator in a factorial-style loop",
+    annotations: ["Starts the product at the multiplicative identity.", "Loops from 2 through 4.", "Multiplies the accumulator by the current value.", "Closes the loop."],
+  },
+  {
+    key: "interview-dom-delegation",
+    label: "Interview DOM event delegation",
+    lines: ["list.addEventListener(\"click\", event => {", "  const item = event.target.closest(\"li\");", "  if (!item) return;", "  item.classList.toggle(\"selected\");", "});"],
+    intent: "Read event delegation from a parent list to clicked child items",
+    annotations: ["Registers one click listener on the parent list.", "Finds the closest list item from the actual clicked target.", "Stops if the click was not inside a list item.", "Toggles selected state on the matched item.", "Closes the event listener callback."],
+  },
+]);
+
+const interviewQuizTopics = quizTopics([
+  {
+    key: "interview-quiz-typeof",
+    label: "Quiz typeof null",
+    lines: ["const values = [null, {n}];", "const answer = typeof values[0];"],
+    question: "What value is stored in answer?",
+    choices: ["\"object\"", "\"null\"", "\"undefined\"", "\"number\""],
+    answerIndex: 0,
+    explanation: "typeof null returns the historical string object even though null is its own primitive value.",
+    intent: "Test the typeof null interview edge case",
+    annotations: ["Creates an array with null in the first slot.", "Applies typeof to null and stores the resulting string."],
+  },
+  {
+    key: "interview-quiz-plus",
+    label: "Quiz plus coercion",
+    lines: ["const answer = \"{n}\" + 1;"],
+    question: "What does answer contain?",
+    choices: ["\"{n}1\"", "{n2}", "NaN", "\"{n}\""],
+    answerIndex: 0,
+    explanation: "A string operand makes plus concatenate, so 1 is converted to text.",
+    intent: "Test string concatenation through the plus operator",
+    annotations: ["Combines a string with a number using plus."],
+  },
+  {
+    key: "interview-quiz-strict",
+    label: "Quiz strict equality",
+    lines: ["const answer = {n} === \"{n}\";"],
+    question: "What boolean is stored in answer?",
+    choices: ["false", "true", "undefined", "TypeError"],
+    answerIndex: 0,
+    explanation: "Strict equality does not coerce, so a number and a string are not equal.",
+    intent: "Test strict equality without coercion",
+    annotations: ["Compares a number and numeric string with strict equality."],
+  },
+  {
+    key: "interview-quiz-var-closure",
+    label: "Quiz var loop closure",
+    lines: ["const fns = [];", "for (var i = 0; i < 3; i += 1) fns.push(() => i);", "const answer = fns[0]();"],
+    question: "What value does answer receive?",
+    choices: ["3", "0", "1", "undefined"],
+    answerIndex: 0,
+    explanation: "All callbacks share the same var binding, and the loop leaves it at 3.",
+    intent: "Test closure behavior with var in a loop",
+    annotations: ["Creates an array for callbacks.", "Stores callbacks that read the shared var binding.", "Calls the first callback after the loop finishes."],
+  },
+  {
+    key: "interview-quiz-let-closure",
+    label: "Quiz let loop closure",
+    lines: ["const fns = [];", "for (let i = 0; i < 3; i += 1) fns.push(() => i);", "const answer = fns[0]();"],
+    question: "What value does answer receive?",
+    choices: ["0", "3", "1", "undefined"],
+    answerIndex: 0,
+    explanation: "let creates a fresh loop binding for each iteration, so the first callback keeps 0.",
+    intent: "Test closure behavior with let in a loop",
+    annotations: ["Creates an array for callbacks.", "Stores callbacks that read per-iteration let bindings.", "Calls the first callback after the loop finishes."],
+  },
+  {
+    key: "interview-quiz-hoisting",
+    label: "Quiz function hoisting",
+    lines: ["const answer = double({n});", "function double(value) { return value * 2; }"],
+    question: "Why can this call work before the declaration line?",
+    choices: ["Function declarations are hoisted", "const variables are hoisted with values", "Arrow functions are hoisted", "The function is imported automatically"],
+    answerIndex: 0,
+    explanation: "Function declarations are initialized during creation of the scope, so the call can appear earlier.",
+    intent: "Test function declaration hoisting",
+    annotations: ["Calls the function before its source position.", "Declares the function that doubles its input."],
+  },
+  {
+    key: "interview-quiz-object-create",
+    label: "Quiz Object.create lookup",
+    lines: ["const base = { role: \"admin\" };", "const user = Object.create(base);", "const answer = user.role;"],
+    question: "Where is role found?",
+    choices: ["On base through the prototype chain", "As an own property on user", "In the global object", "It is not found"],
+    answerIndex: 0,
+    explanation: "Object.create(base) makes base the prototype, so property lookup falls through to base.",
+    intent: "Test prototype-chain property lookup",
+    annotations: ["Creates the prototype object.", "Creates an object linked to that prototype.", "Reads a property that is inherited from the prototype."],
+  },
+  {
+    key: "interview-quiz-shallow-copy",
+    label: "Quiz shallow copy",
+    lines: ["const original = { nested: { count: {n} } };", "const copy = { ...original };", "copy.nested.count += 1;", "const answer = original.nested.count;"],
+    question: "Why does original.nested.count change?",
+    choices: ["The nested object reference is shared", "Spread deeply clones every object", "Numbers are passed by reference", "const makes nested values mutable globally"],
+    answerIndex: 0,
+    explanation: "Object spread copies the top-level property, but the nested object remains the same object.",
+    intent: "Test shallow copy behavior",
+    annotations: ["Creates an object with nested state.", "Copies the top-level object with spread.", "Mutates the nested object through the copy.", "Reads the nested value through the original."],
+  },
+  {
+    key: "interview-quiz-this-method",
+    label: "Quiz implicit this",
+    lines: ["const user = { name: \"{label}\", read() { return this.name; } };", "const answer = user.read();"],
+    question: "What determines this inside read?",
+    choices: ["The call site user.read()", "The place where read was written", "The name of the object literal", "The variable named answer"],
+    answerIndex: 0,
+    explanation: "For a method call, this is set from the object to the left of the call.",
+    intent: "Test implicit this binding",
+    annotations: ["Creates an object with a method that reads this.name.", "Calls the method through user, setting this to user."],
+  },
+  {
+    key: "interview-quiz-push",
+    label: "Quiz push return",
+    lines: ["const items = [\"a\", \"b\"];", "const answer = items.push(\"c\");"],
+    question: "What does push return?",
+    choices: ["The new array length", "The pushed value", "The original array", "undefined"],
+    answerIndex: 0,
+    explanation: "push mutates the array and returns its new length.",
+    intent: "Test Array.prototype.push return value",
+    annotations: ["Creates a two-item array.", "Pushes one item and stores the return value."],
+  },
+  {
+    key: "interview-quiz-delete-hole",
+    label: "Quiz delete array hole",
+    lines: ["const items = [\"a\", \"b\", \"c\"];", "delete items[1];", "const answer = items.length;"],
+    question: "What is the array length after delete?",
+    choices: ["3", "2", "1", "0"],
+    answerIndex: 0,
+    explanation: "delete removes the indexed property but does not compact the array or change length.",
+    intent: "Test delete behavior on arrays",
+    annotations: ["Creates a three-item array.", "Deletes the property at index 1.", "Reads the unchanged length."],
+  },
+  {
+    key: "interview-quiz-sort-default",
+    label: "Quiz default sort",
+    lines: ["const values = [10, 2, 1];", "values.sort();", "const answer = values.join(\",\");"],
+    question: "What ordering does default sort use here?",
+    choices: ["String/lexicographic ordering", "Numeric ascending ordering", "Insertion ordering", "Random ordering"],
+    answerIndex: 0,
+    explanation: "Without a comparator, sort converts elements to strings and compares those strings.",
+    intent: "Test default array sort behavior",
+    annotations: ["Creates numeric values.", "Sorts without a comparator.", "Joins the sorted values for inspection."],
+  },
+  {
+    key: "interview-quiz-map",
+    label: "Quiz map purpose",
+    lines: ["const values = [1, 2, {n}];", "const answer = values.map(value => value * 2);"],
+    question: "What is map doing in this snippet?",
+    choices: ["Returning a new array of transformed values", "Filtering out false values", "Changing the original array length", "Reducing values to one number"],
+    answerIndex: 0,
+    explanation: "map calls the callback for each item and returns a new array of callback results.",
+    intent: "Test the role of map",
+    annotations: ["Creates an array.", "Transforms each item into double its value."],
+  },
+  {
+    key: "interview-quiz-filter",
+    label: "Quiz filter purpose",
+    lines: ["const values = [0, 1, {n}];", "const answer = values.filter(Boolean);"],
+    question: "What does filter(Boolean) keep?",
+    choices: ["Truthy items", "Only boolean items", "Only false values", "Only strings"],
+    answerIndex: 0,
+    explanation: "Boolean is used as the predicate, so each item is kept when its truthiness is true.",
+    intent: "Test filter with Boolean as predicate",
+    annotations: ["Creates an array with a falsy zero and truthy values.", "Keeps values that Boolean converts to true."],
+  },
+  {
+    key: "interview-quiz-reduce",
+    label: "Quiz reduce accumulator",
+    lines: ["const values = [1, 2, {n}];", "const answer = values.reduce((sum, value) => sum + value, 0);"],
+    question: "What role does sum play?",
+    choices: ["It is the accumulator carried between iterations", "It is always the first array item", "It is the array index", "It is the final callback only"],
+    answerIndex: 0,
+    explanation: "The callback returns the next accumulator, which is received as sum on the next iteration.",
+    intent: "Test reduce accumulator reading",
+    annotations: ["Creates values.", "Adds each value into an accumulator that starts at zero."],
+  },
+  {
+    key: "interview-quiz-arrow-object",
+    label: "Quiz arrow object return",
+    lines: ["const make = value => ({ value });", "const answer = make({n}).value;"],
+    question: "Why are parentheses around the object literal needed?",
+    choices: ["They make the object an expression to return", "They create a new block scope", "They bind this", "They spread the object"],
+    answerIndex: 0,
+    explanation: "Without parentheses, braces after an arrow are parsed as a function body.",
+    intent: "Test concise arrow object returns",
+    annotations: ["Defines an arrow function returning an object literal expression.", "Calls it and reads the value property."],
+  },
+  {
+    key: "interview-quiz-rest-param",
+    label: "Quiz rest parameter",
+    lines: ["function count(first, ...rest) { return rest.length; }", "const answer = count(\"a\", \"b\", \"c\");"],
+    question: "What does rest contain?",
+    choices: ["The arguments after first", "All arguments including first", "Only the first argument", "The function return values"],
+    answerIndex: 0,
+    explanation: "The rest parameter gathers remaining arguments into an array.",
+    intent: "Test rest parameter behavior",
+    annotations: ["Declares a function with a rest parameter.", "Calls it with three arguments."],
+  },
+  {
+    key: "interview-quiz-iife",
+    label: "Quiz IIFE",
+    lines: ["const answer = (() => {", "  const value = {n};", "  return value + 1;", "})();"],
+    question: "When does the arrow function run?",
+    choices: ["Immediately, because of the final call parentheses", "Only when answer is read", "On the next event-loop tick", "Never"],
+    answerIndex: 0,
+    explanation: "The function expression is followed by (), so it is invoked immediately.",
+    intent: "Test immediately invoked function expressions",
+    annotations: ["Creates and calls an arrow function expression.", "Declares a local value.", "Returns one more than the local value.", "Closes and invokes the function."],
+  },
+  {
+    key: "interview-quiz-callback",
+    label: "Quiz callback",
+    lines: ["function apply(value, fn) { return fn(value); }", "const answer = apply({n}, value => value + 1);"],
+    question: "Which part is the callback?",
+    choices: ["value => value + 1", "apply", "{n}", "answer"],
+    answerIndex: 0,
+    explanation: "The arrow function is passed as an argument and invoked by apply.",
+    intent: "Test callback identification",
+    annotations: ["Declares a helper that calls a function argument.", "Passes an arrow function as that callback."],
+  },
+  {
+    key: "interview-quiz-query-selector",
+    label: "Quiz querySelector",
+    lines: ["const match = document.querySelector(\".active\");", "const answer = match?.textContent ?? \"missing\";"],
+    question: "Why is optional chaining used?",
+    choices: ["querySelector can return null", "textContent is always async", "The selector returns an array", "DOM nodes cannot have properties"],
+    answerIndex: 0,
+    explanation: "When no element matches, querySelector returns null, so optional chaining avoids reading a property from null.",
+    intent: "Test safe DOM query reading",
+    annotations: ["Selects the first matching element or null.", "Reads text safely or falls back to missing."],
+  },
+  {
+    key: "interview-quiz-query-all",
+    label: "Quiz querySelectorAll",
+    lines: ["const nodes = document.querySelectorAll(\"li\");", "const answer = Array.from(nodes).length;"],
+    question: "Why convert nodes with Array.from in many snippets?",
+    choices: ["To use array methods reliably", "To change the DOM immediately", "To remove every node", "To turn text into HTML"],
+    answerIndex: 0,
+    explanation: "querySelectorAll returns a NodeList, and converting to an array makes array operations explicit.",
+    intent: "Test NodeList-to-array conversion",
+    annotations: ["Selects matching list item nodes.", "Converts the NodeList to an array and reads its length."],
+  },
+  {
+    key: "interview-quiz-event-current-target",
+    label: "Quiz event currentTarget",
+    lines: ["button.addEventListener(\"click\", event => {", "  event.currentTarget.disabled = true;", "});"],
+    question: "What does currentTarget refer to inside this handler?",
+    choices: ["The element the listener is attached to", "The deepest clicked child only", "The document object", "The previous event"],
+    answerIndex: 0,
+    explanation: "currentTarget is the element currently handling the event, which is the button here.",
+    intent: "Test DOM event handler reading",
+    annotations: ["Registers a click handler.", "Disables the listener owner when the handler runs.", "Closes the handler."],
+  },
+  {
+    key: "interview-quiz-microtask",
+    label: "Quiz microtask order",
+    lines: ["const order = [];", "Promise.resolve().then(() => order.push(\"micro\"));", "order.push(\"sync\");"],
+    question: "Which push happens first?",
+    choices: ["sync", "micro", "They happen at the same time", "Neither runs"],
+    answerIndex: 0,
+    explanation: "The promise callback is a microtask, so synchronous code continues first.",
+    intent: "Test promise microtask scheduling",
+    annotations: ["Creates an array.", "Schedules a microtask callback.", "Pushes synchronously before the microtask runs."],
+  },
+  {
+    key: "interview-quiz-timeout",
+    label: "Quiz timeout order",
+    lines: ["const order = [];", "setTimeout(() => order.push(\"timer\"), 0);", "order.push(\"sync\");"],
+    question: "Which push happens first?",
+    choices: ["sync", "timer", "They happen at the same time", "The timer cancels sync"],
+    answerIndex: 0,
+    explanation: "setTimeout schedules work for a later macrotask, so the current synchronous line runs first.",
+    intent: "Test timer scheduling",
+    annotations: ["Creates an array.", "Schedules a timer callback.", "Pushes synchronously before the timer callback runs."],
+  },
+  {
+    key: "interview-quiz-recursion",
+    label: "Quiz recursion base case",
+    lines: ["function countDown(value) {", "  if (value === 0) return \"done\";", "  return countDown(value - 1);", "}", "const answer = countDown(2);"],
+    question: "What stops the recursion?",
+    choices: ["The value === 0 base case", "The function name", "The const assignment", "The call stack automatically stops it"],
+    answerIndex: 0,
+    explanation: "Each recursive call decreases value until the base case returns without another recursive call.",
+    intent: "Test recursive base-case recognition",
+    annotations: ["Declares a recursive function.", "Returns done at the base case.", "Recurses with a smaller value.", "Closes the function.", "Starts the recursion with 2."],
+  },
+]);
+
+const interviewTopics = [...interviewCodeTopics, ...interviewQuizTopics];
+if (interviewCodeTopics.length !== INTERVIEW_CODE_TOPIC_COUNT) {
+  throw new Error(`Expected 100 interview code-reading topics, got ${interviewCodeTopics.length}`);
+}
+if (interviewQuizTopics.length !== INTERVIEW_QUIZ_TOPIC_COUNT) {
+  throw new Error(`Expected 25 interview quiz topics, got ${interviewQuizTopics.length}`);
+}
+if (interviewTopics.length !== INTERVIEW_CODE_TOPIC_COUNT + INTERVIEW_QUIZ_TOPIC_COUNT) {
+  throw new Error(`Expected 125 interview topics, got ${interviewTopics.length}`);
+}
+
 const moduleTopicMap = {
   syntax: [...syntaxTopics, ...extraSyntaxTopics, ...complexTopicsFor("syntax", useCaseSets.variables)],
   expressions: [...expressionTopics, ...extraExpressionTopics, ...complexTopicsFor("expressions", useCaseSets.expressions)],
@@ -3779,6 +4852,7 @@ const moduleTopicMap = {
   async: [...asyncTopics, ...extraAsyncTopics, ...complexTopicsFor("async", useCaseSets.async)],
   node: [...nodeTopics, ...extraNodeTopics, ...complexTopicsFor("node", useCaseSets.node)],
   advanced: [...advancedTopics, ...extraAdvancedTopics, ...complexTopicsFor("advanced", useCaseSets.advanced)],
+  interview: interviewTopics,
 };
 
 function validate(cards) {
@@ -3797,6 +4871,8 @@ function validate(cards) {
   }
 
   const seenFronts = new Map();
+  let quizCards = 0;
+  let interviewCards = 0;
   for (const [index, card] of cards.entries()) {
     if (card.front.includes("\t")) errors.push(`Card ${index + 1} front contains a tab`);
     const back = renderBack(card);
@@ -3812,6 +4888,22 @@ function validate(cards) {
     for (const section of requiredBackSections) {
       if (!back.includes(section)) errors.push(`Card ${index + 1} is missing back section ${section}`);
     }
+    if (card.module === "interview") interviewCards += 1;
+    if (card.kind === "quiz") {
+      quizCards += 1;
+      if (!card.front.includes("Question:")) errors.push(`Quiz card ${index + 1} is missing a front question`);
+      if (!back.includes("Answer:") || !back.includes("Why:")) errors.push(`Quiz card ${index + 1} is missing answer back matter`);
+      if (!tagsFor(card).includes("multiple-choice")) errors.push(`Quiz card ${index + 1} is missing multiple-choice tag`);
+    }
+  }
+
+  const expectedInterviewCards = (INTERVIEW_CODE_TOPIC_COUNT + INTERVIEW_QUIZ_TOPIC_COUNT) * CARDS_PER_TOPIC;
+  const expectedQuizCards = INTERVIEW_QUIZ_TOPIC_COUNT * CARDS_PER_TOPIC;
+  if (interviewCards !== expectedInterviewCards) {
+    errors.push(`Expected ${expectedInterviewCards} interview cards, got ${interviewCards}`);
+  }
+  if (quizCards !== expectedQuizCards) {
+    errors.push(`Expected ${expectedQuizCards} quiz cards, got ${quizCards}`);
   }
 
   if (errors.length) {
@@ -3824,7 +4916,7 @@ function renderDeck(cards) {
     "#separator:tab",
     "#html:true",
     "#notetype:Basic",
-    "#deck:JavaScript Code Reading::5000 Snippets",
+    `#deck:${DECK_NAME}`,
     "#tags:javascript code-reading",
     "#tags column:3",
   ];
@@ -3956,7 +5048,7 @@ function createCollectionMetadata(mod) {
   };
   const decks = {
     1: createDeck(1, "Default", mod),
-    [DECK_ID]: createDeck(DECK_ID, "JavaScript Code Reading::5000 Snippets", mod),
+    [DECK_ID]: createDeck(DECK_ID, DECK_NAME, mod),
   };
   const dconf = {
     1: createDeckConfig(),
@@ -4035,6 +5127,8 @@ writeFileSync(SUMMARY, `${JSON.stringify({
   cards: cards.length,
   topics: new Set(cards.map((card) => card.topic)).size,
   cardsPerTopic: CARDS_PER_TOPIC,
+  interviewCodeCards: INTERVIEW_CODE_TOPIC_COUNT * CARDS_PER_TOPIC,
+  quizCards: cards.filter((card) => card.kind === "quiz").length,
   modules: modules.map((moduleInfo) => ({
     key: moduleInfo.key,
     label: moduleInfo.label,
