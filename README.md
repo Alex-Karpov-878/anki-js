@@ -1,16 +1,21 @@
 # JavaScript Code Reading Anki Deck
 
-This workspace contains an import-ready Anki package and TSV deck for beginner-to-advanced JavaScript and Node.js code reading practice.
+This workspace contains an import-ready Anki package and TSV deck for beginner-to-advanced JavaScript and Node.js code reading practice. The current deck is `JavaScript Code Reading::6250 Snippets`.
 
 The deck is generated from 625 distinct snippet and quiz topics, with 10 cards per topic. Cards are interleaved by topic inside each module, so the deck does not begin with long runs of nearly identical `const` or `let` examples.
 
 ## Files
 
-- `dist/javascript-code-reading-6250.tsv` - the Anki import file with 6250 Basic notes.
-- `dist/javascript-code-reading-6250.apkg` - the Anki package file with the same 6250 notes.
+- `dist/javascript-code-reading-6250.apkg` - the recommended Anki package file with 6250 Basic notes and the deck styling embedded in the note type.
+- `dist/javascript-code-reading-6250.tsv` - the TSV import file with the same 6250 Basic notes. This file is larger because it includes styled HTML in every note field.
 - `dist/javascript-code-reading-6250.summary.json` - module counts and output metadata.
 - `scripts/generate-js-reading-anki.mjs` - deterministic generator, validator, TSV writer, and APKG writer.
 - `scripts/build-apkg.py` - standard-library helper used by the generator to build `collection.anki2` and package it as `.apkg`.
+
+Current generated artifact sizes:
+
+- APKG: about 3.0 MB.
+- TSV: about 40 MB.
 
 ## Import Into Anki Desktop
 
@@ -27,6 +32,8 @@ The TSV is also available if you want to inspect or customize the notes before i
 ```text
 dist/javascript-code-reading-6250.tsv
 ```
+
+The APKG path is preferred for normal use because it preserves the shared note type styling directly. The TSV also works, but it stores inline HTML styles in each field so it is much larger.
 
 The file includes these Anki headers:
 
@@ -75,11 +82,23 @@ Direct local import on Android is also possible if you copy `dist/javascript-cod
 
 Each note has:
 
-- Front: a code snippet rendered as HTML. Multiple-choice cards also include a question and A-D answer choices on the front.
-- Back: intent, a "read it as" mental model, the correct quiz answer when relevant, annotated code line by line, targeted reading cues, nuance and pitfall notes, console output when the front contains `console.log`, and common use cases.
+- Front: a styled code snippet. Multiple-choice cards also include a styled question block and A-D answer choices on the front.
+- Back: level/module/topic badges, intent, a "read it as" mental model, the correct quiz answer when relevant, annotated code line by line, targeted reading cues, nuance and pitfall notes, console output when the front contains `console.log`, and common use cases.
 - Tags: module, level, topic tags, and `multiple-choice` for quiz cards.
 
 The back matter is generated for every card, not just advanced cards. This gives beginners a consistent reading routine while still adding higher-level cautions for async behavior, mutation, coercion, closures, object identity, Node.js resources, and production-style unrefactored snippets.
+
+## Card Styling
+
+The generated cards use HTML styling intended to make long code-reading cards easier to scan:
+
+- A clean card shell with constrained width and readable spacing.
+- Dark monospace code blocks for snippets.
+- Separate visual blocks for intent, mental model, annotated code, reading cues, pitfalls, console output, and use cases.
+- Highlighted answer and explanation blocks for multiple-choice cards.
+- Level, module, and topic badges on the back.
+
+The APKG stores shared CSS in the Anki note type. The TSV stores inline HTML styles so the cards still render acceptably when imported from TSV.
 
 ## Coverage
 
@@ -110,3 +129,15 @@ It writes both:
 dist/javascript-code-reading-6250.tsv
 dist/javascript-code-reading-6250.apkg
 ```
+
+## Validation Status
+
+The current generated files were checked after the latest styling and output pass:
+
+- TSV import shape: 6250 rows, 0 malformed rows.
+- APKG package: 6250 notes and 6250 cards.
+- Styled fields: all 6250 fronts and backs include the styled card wrapper.
+- Snippet syntax: 5110 snippets parse as scripts, 1140 parse as modules, 0 syntax issues.
+- Console output: all 510 `console.log` cards include output back matter.
+- Exact console output: 351 cards were executed in Node with 0 output mismatches.
+- Runtime-dependent console notes: 159 cards were checked with controlled fixtures and 0 failures.

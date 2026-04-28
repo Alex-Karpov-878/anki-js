@@ -3,9 +3,12 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-const OUTPUT = resolve("dist/javascript-code-reading-6250.tsv");
-const APKG_OUTPUT = resolve("dist/javascript-code-reading-6250.apkg");
-const SUMMARY = resolve("dist/javascript-code-reading-6250.summary.json");
+const OUTPUT_FILE = "dist/javascript-code-reading-6250.tsv";
+const APKG_FILE = "dist/javascript-code-reading-6250.apkg";
+const SUMMARY_FILE = "dist/javascript-code-reading-6250.summary.json";
+const OUTPUT = resolve(OUTPUT_FILE);
+const APKG_OUTPUT = resolve(APKG_FILE);
+const SUMMARY = resolve(SUMMARY_FILE);
 const TARGET_COUNT = 6250;
 const CARDS_PER_TOPIC = 10;
 const INTERVIEW_CODE_TOPIC_COUNT = 100;
@@ -5210,8 +5213,8 @@ mkdirSync(dirname(OUTPUT), { recursive: true });
 writeFileSync(OUTPUT, renderDeck(cards), "utf8");
 writeApkg(cards, APKG_OUTPUT);
 writeFileSync(SUMMARY, `${JSON.stringify({
-  output: OUTPUT,
-  apkg: APKG_OUTPUT,
+  output: OUTPUT_FILE,
+  apkg: APKG_FILE,
   cards: cards.length,
   topics: new Set(cards.map((card) => card.topic)).size,
   cardsPerTopic: CARDS_PER_TOPIC,
