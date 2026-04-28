@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-const OUTPUT = resolve("dist/javascript-code-reading-5000.tsv");
-const APKG_OUTPUT = resolve("dist/javascript-code-reading-5000.apkg");
-const SUMMARY = resolve("dist/javascript-code-reading-5000.summary.json");
-const TARGET_COUNT = 5000;
+const OUTPUT = resolve("dist/javascript-code-reading-6000.tsv");
+const APKG_OUTPUT = resolve("dist/javascript-code-reading-6000.apkg");
+const SUMMARY = resolve("dist/javascript-code-reading-6000.summary.json");
+const TARGET_COUNT = 6000;
 const CARDS_PER_TOPIC = 10;
 const DECK_ID = 1777242703000;
 const MODEL_ID = 1777242703001;
@@ -25,6 +25,7 @@ const modules = [
   { key: "async", label: "Promises, async code, and concurrency", level: 8, target: 500 },
   { key: "node", label: "Node.js runtime, files, HTTP, and streams", level: 9, target: 500 },
   { key: "advanced", label: "Advanced JavaScript and Node.js patterns", level: 10, target: 500 },
+  { key: "interview", label: "Interview-style patterns and problem readings", level: 11, target: 1000 },
 ];
 
 const identifiers = [
@@ -484,6 +485,7 @@ function mentalModelFor(card) {
     async: "Separate scheduling from completion; the line that starts work is often not the line that receives the result.",
     node: "Read Node.js snippets around resources: environment, files, network requests, streams, processes, and cleanup.",
     advanced: "Look for the hidden control point: a wrapper, proxy, cache, queue, factory, or context object often changes when work actually runs.",
+    interview: "Read this as an interview exercise: identify the tested concept, trace the concrete values, and name the edge case the snippet is probing.",
   };
 
   return moduleModels[card.module] ?? "Read the snippet by naming the values, following execution order, and checking the final observable effect.";
@@ -546,6 +548,7 @@ function readingCuesFor(card) {
     async: "Look for work that starts immediately versus work that runs after the current stack finishes.",
     node: "Node snippets often combine JavaScript control flow with operating-system or network side effects.",
     advanced: "Identify the abstraction boundary first; many advanced patterns redirect a call without changing the caller's syntax.",
+    interview: "Interview snippets often test one precise rule, so isolate the rule before following the surrounding variable names.",
   };
   cues.push(moduleCues[card.module]);
 
@@ -658,6 +661,7 @@ function nuancesFor(card) {
     async: "Async code usually has two correctness questions: what value resolves, and when the continuation runs.",
     node: "Node.js snippets are often constrained by resource lifetime, error events, process state, and filesystem or network behavior.",
     advanced: "Advanced patterns are easier to parse when you locate the indirection point before following the business logic.",
+    interview: "These problems often look small but hide scope, coercion, mutation, callback timing, or DOM collection details.",
   };
   nuances.push(moduleNuances[card.module]);
 
@@ -741,6 +745,7 @@ const useCaseSets = {
   async: ["Reading network calls", "Understanding concurrent work", "Spotting async error handling"],
   node: ["Reading server-side scripts", "Understanding Node.js APIs", "Following file, HTTP, and stream workflows"],
   advanced: ["Reading production application patterns", "Understanding framework internals", "Recognizing performance and reliability techniques"],
+  interview: ["Practicing interview-style code reading", "Recognizing the specific JavaScript rule being tested", "Tracing small snippets with edge cases"],
 };
 
 const syntaxTopics = [
