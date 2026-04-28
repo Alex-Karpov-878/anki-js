@@ -14,8 +14,8 @@ The deck is generated from 625 distinct snippet and quiz topics, with 10 cards p
 
 Current generated artifact sizes:
 
-- APKG: about 3.0 MB.
-- TSV: about 40 MB.
+- APKG: about 4.1 MB.
+- TSV: about 71 MB.
 
 ## Import Into Anki Desktop
 
@@ -93,7 +93,7 @@ The back matter is generated for every card, not just advanced cards. This gives
 The generated cards use HTML styling intended to make long code-reading cards easier to scan:
 
 - A clean card shell with constrained width and readable spacing.
-- Dark monospace code blocks for snippets.
+- Dark monospace code blocks with static JavaScript syntax highlighting for snippets.
 - Separate visual blocks for intent, mental model, annotated code, reading cues, pitfalls, console output, and use cases.
 - Highlighted answer and explanation blocks for multiple-choice cards.
 - Level, module, and topic badges on the back.
@@ -132,11 +132,11 @@ dist/javascript-code-reading-6250.apkg
 
 ## Validation Status
 
-The current generated files were checked after the latest styling and output pass:
+The current generated files were checked after the latest styling, highlighting, and output pass:
 
 - TSV import shape: 6250 rows, 0 malformed rows.
 - APKG package: 6250 notes and 6250 cards.
-- Styled fields: all 6250 fronts and backs include the styled card wrapper.
+- Styled fields: all 6250 fronts and backs include the styled card wrapper and highlighted JavaScript code spans.
 - Snippet syntax: 5110 snippets parse as scripts, 1140 parse as modules, 0 syntax issues.
 - Console output: all 510 `console.log` cards include output back matter.
 - Exact console output: 351 cards were executed in Node with 0 output mismatches.

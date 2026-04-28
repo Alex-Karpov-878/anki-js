@@ -274,6 +274,17 @@ const ANSWER_STYLE = "margin:12px 0;padding:12px 14px;border-left:4px solid #16a
 const LIST_STYLE = "margin:0.35em 0 0;padding-left:1.25em;";
 const LIST_ITEM_STYLE = "margin:0.35em 0;";
 const BADGE_STYLE = "display:inline-block;margin:0 6px 6px 0;padding:3px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#f1f5f9;color:#334155;font-size:0.74em;font-weight:700;";
+const TOKEN_STYLES = {
+  keyword: "color:#93c5fd;font-weight:700;",
+  literal: "color:#fbbf24;",
+  string: "color:#86efac;",
+  number: "color:#fbbf24;",
+  comment: "color:#94a3b8;font-style:italic;",
+  builtin: "color:#f9a8d4;",
+  function: "color:#c4b5fd;",
+  operator: "color:#e5e7eb;",
+  property: "color:#67e8f9;",
+};
 const CARD_CSS = [
   ".card { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; line-height: 1.48; text-align: left; color: #111827; background: #eef2f7; padding: 18px; }",
   ".js-card { box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08); }",
@@ -281,6 +292,14 @@ const CARD_CSS = [
   ".js-code-frame pre { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }",
   ".js-code-frame code { font-family: Menlo, Consolas, 'SFMono-Regular', monospace; font-size: 0.94em; line-height: 1.5; color: inherit; background: transparent; }",
   ".js-output-frame code { color: #dcfce7; }",
+  ".tok-keyword { color: #93c5fd; font-weight: 700; }",
+  ".tok-literal, .tok-number { color: #fbbf24; }",
+  ".tok-string { color: #86efac; }",
+  ".tok-comment { color: #94a3b8; font-style: italic; }",
+  ".tok-builtin { color: #f9a8d4; }",
+  ".tok-function { color: #c4b5fd; }",
+  ".tok-operator { color: #e5e7eb; }",
+  ".tok-property { color: #67e8f9; }",
   ".js-section p:first-child { margin-top: 0; }",
   ".js-section p:last-child { margin-bottom: 0; }",
   ".js-key-value { margin-top: 12px; margin-bottom: 12px; }",
@@ -289,8 +308,268 @@ const CARD_CSS = [
   "@media (max-width: 560px) { .card { padding: 8px; font-size: 16px; } .js-card { padding: 14px 12px !important; border-radius: 8px !important; } .js-code-frame { padding: 12px !important; } }",
 ].join("\n");
 
+const JS_KEYWORDS = new Set([
+  "as",
+  "async",
+  "await",
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "constructor",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "export",
+  "extends",
+  "finally",
+  "for",
+  "from",
+  "function",
+  "get",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "let",
+  "new",
+  "of",
+  "return",
+  "set",
+  "static",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "yield",
+]);
+
+const JS_LITERALS = new Set(["true", "false", "null", "undefined", "NaN", "Infinity"]);
+
+const JS_BUILTINS = new Set([
+  "AggregateError",
+  "Array",
+  "AsyncLocalStorage",
+  "BigInt",
+  "Boolean",
+  "Buffer",
+  "DataView",
+  "Date",
+  "Error",
+  "EventEmitter",
+  "Float32Array",
+  "Float64Array",
+  "Int8Array",
+  "Int16Array",
+  "Int32Array",
+  "Intl",
+  "JSON",
+  "Map",
+  "Math",
+  "Number",
+  "Object",
+  "Promise",
+  "Proxy",
+  "RangeError",
+  "Readable",
+  "ReferenceError",
+  "Reflect",
+  "RegExp",
+  "Set",
+  "String",
+  "Symbol",
+  "SyntaxError",
+  "TypeError",
+  "URL",
+  "URLSearchParams",
+  "Uint8Array",
+  "Uint16Array",
+  "Uint32Array",
+  "WeakMap",
+  "WeakRef",
+  "WeakSet",
+  "Writable",
+  "clearImmediate",
+  "clearTimeout",
+  "console",
+  "document",
+  "exports",
+  "fetch",
+  "fs",
+  "globalThis",
+  "module",
+  "path",
+  "performance",
+  "process",
+  "queueMicrotask",
+  "require",
+  "setImmediate",
+  "setTimeout",
+  "structuredClone",
+  "window",
+]);
+
+function styledToken(kind, value) {
+  return `<span class="tok-${kind}" style="${TOKEN_STYLES[kind]}">${escapeHtml(value).replaceAll("\n", "<br>")}</span>`;
+}
+
+function plainToken(value) {
+  return escapeHtml(value).replaceAll("\n", "<br>");
+}
+
+function readQuotedToken(code, start, quote) {
+  let index = start + 1;
+  while (index < code.length) {
+    const char = code[index];
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === quote) return index + 1;
+    if (quote !== "`" && char === "\n") return index;
+    index += 1;
+  }
+  return code.length;
+}
+
+function readBlockComment(code, start) {
+  const end = code.indexOf("*/", start + 2);
+  return end === -1 ? code.length : end + 2;
+}
+
+function readRegexToken(code, start) {
+  let index = start + 1;
+  let inClass = false;
+  while (index < code.length) {
+    const char = code[index];
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (char === "[") inClass = true;
+    if (char === "]") inClass = false;
+    if (char === "/" && !inClass) {
+      index += 1;
+      while (/[a-z]/i.test(code[index] ?? "")) index += 1;
+      return index;
+    }
+    if (char === "\n") return start + 1;
+    index += 1;
+  }
+  return start + 1;
+}
+
+function canStartRegex(previousSignificant) {
+  return !previousSignificant || /[({[=,:;!&|?+\-*~^<>]/.test(previousSignificant);
+}
+
+function syntaxHighlightJavaScript(code) {
+  let index = 0;
+  let html = "";
+  let previousSignificant = "";
+
+  while (index < code.length) {
+    const char = code[index];
+    const next = code[index + 1] ?? "";
+
+    if (/\s/.test(char)) {
+      html += plainToken(char);
+      index += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      const end = code.indexOf("\n", index + 2);
+      const tokenEnd = end === -1 ? code.length : end;
+      html += styledToken("comment", code.slice(index, tokenEnd));
+      index = tokenEnd;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      const tokenEnd = readBlockComment(code, index);
+      html += styledToken("comment", code.slice(index, tokenEnd));
+      index = tokenEnd;
+      continue;
+    }
+
+    if (char === "'" || char === '"' || char === "`") {
+      const tokenEnd = readQuotedToken(code, index, char);
+      html += styledToken("string", code.slice(index, tokenEnd));
+      previousSignificant = char;
+      index = tokenEnd;
+      continue;
+    }
+
+    if (char === "/" && canStartRegex(previousSignificant)) {
+      const tokenEnd = readRegexToken(code, index);
+      if (tokenEnd > index + 1) {
+        html += styledToken("string", code.slice(index, tokenEnd));
+        previousSignificant = "/";
+        index = tokenEnd;
+        continue;
+      }
+    }
+
+    const numberMatch = code.slice(index).match(/^(?:0[xX][0-9a-fA-F]+n?|0[bB][01]+n?|0[oO][0-7]+n?|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?n?)/);
+    if (numberMatch) {
+      const token = numberMatch[0];
+      html += styledToken("number", token);
+      previousSignificant = token.at(-1) ?? previousSignificant;
+      index += token.length;
+      continue;
+    }
+
+    const identifierMatch = code.slice(index).match(/^[A-Za-z_$][A-Za-z0-9_$]*/);
+    if (identifierMatch) {
+      const token = identifierMatch[0];
+      let lookahead = index + token.length;
+      while (/\s/.test(code[lookahead] ?? "")) lookahead += 1;
+      const previousNonSpace = code.slice(0, index).match(/\S(?=\s*$)/)?.[0] ?? "";
+      if (JS_KEYWORDS.has(token)) {
+        html += styledToken("keyword", token);
+      } else if (JS_LITERALS.has(token)) {
+        html += styledToken("literal", token);
+      } else if (previousNonSpace === ".") {
+        html += styledToken("property", token);
+      } else if (code[lookahead] === "(") {
+        html += styledToken(JS_BUILTINS.has(token) ? "builtin" : "function", token);
+      } else if (JS_BUILTINS.has(token)) {
+        html += styledToken("builtin", token);
+      } else {
+        html += plainToken(token);
+      }
+      previousSignificant = token.at(-1) ?? previousSignificant;
+      index += token.length;
+      continue;
+    }
+
+    if (/[{}()[\].,;:?+\-*%=&|!<>^~]/.test(char)) {
+      html += styledToken("operator", char);
+      previousSignificant = char;
+      index += 1;
+      continue;
+    }
+
+    html += plainToken(char);
+    previousSignificant = char;
+    index += 1;
+  }
+
+  return html;
+}
+
 function codeBlock(value) {
-  return `<div class="js-code-frame" style="${CODE_FRAME_STYLE}"><pre><code>${escapeHtml(value).replaceAll("\n", "<br>")}</code></pre></div>`;
+  return `<div class="js-code-frame" style="${CODE_FRAME_STYLE}"><pre><code>${syntaxHighlightJavaScript(value)}</code></pre></div>`;
 }
 
 function outputCodeBlock(value) {
