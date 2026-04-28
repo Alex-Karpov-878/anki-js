@@ -260,12 +260,66 @@ function inlineCode(value) {
   return `<code>${escapeHtml(value)}</code>`;
 }
 
+const CARD_STYLE = "max-width:880px;margin:0 auto;padding:18px 20px;border:1px solid #d7dee8;border-radius:10px;background:#ffffff;color:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:18px;line-height:1.48;text-align:left;box-sizing:border-box;";
+const CODE_FRAME_STYLE = "margin:0.65em 0 1em;padding:14px 16px;border:1px solid #1f2937;border-radius:10px;background:#0f172a;color:#e5e7eb;font-family:Menlo,Consolas,'SFMono-Regular',monospace;overflow:auto;box-sizing:border-box;";
+const OUTPUT_FRAME_STYLE = "margin:0.65em 0 0.3em;padding:12px 14px;border:1px solid #14532d;border-radius:10px;background:#052e16;color:#dcfce7;font-family:Menlo,Consolas,'SFMono-Regular',monospace;overflow:auto;box-sizing:border-box;";
+const SECTION_STYLE = "margin:14px 0;padding:13px 15px;border:1px solid #dbe3ee;border-radius:9px;background:#f8fafc;box-sizing:border-box;";
+const SECTION_TITLE_STYLE = "margin:0 0 8px;color:#334155;font-size:0.78em;font-weight:800;text-transform:uppercase;letter-spacing:0;";
+const KEY_VALUE_STYLE = "margin:12px 0;padding:12px 14px;border-left:4px solid #2563eb;border-radius:8px;background:#eff6ff;box-sizing:border-box;";
+const QUIZ_STYLE = "margin:14px 0 0;padding:13px 15px;border:1px solid #c4b5fd;border-radius:9px;background:#f5f3ff;box-sizing:border-box;";
+const ANSWER_STYLE = "margin:12px 0;padding:12px 14px;border-left:4px solid #16a34a;border-radius:8px;background:#f0fdf4;box-sizing:border-box;";
+const LIST_STYLE = "margin:0.35em 0 0;padding-left:1.25em;";
+const LIST_ITEM_STYLE = "margin:0.35em 0;";
+const BADGE_STYLE = "display:inline-block;margin:0 6px 6px 0;padding:3px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#f1f5f9;color:#334155;font-size:0.74em;font-weight:700;";
+const CARD_CSS = [
+  ".card { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; font-size: 18px; line-height: 1.48; text-align: left; color: #111827; background: #eef2f7; padding: 18px; }",
+  ".js-card { box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08); }",
+  ".js-card-front .js-code-frame { margin-bottom: 0; }",
+  ".js-code-frame pre { margin: 0; padding: 0; border: 0; background: transparent; color: inherit; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }",
+  ".js-code-frame code { font-family: Menlo, Consolas, 'SFMono-Regular', monospace; font-size: 0.94em; line-height: 1.5; color: inherit; background: transparent; }",
+  ".js-output-frame code { color: #dcfce7; }",
+  ".js-section p:first-child { margin-top: 0; }",
+  ".js-section p:last-child { margin-bottom: 0; }",
+  ".js-key-value { margin-top: 12px; margin-bottom: 12px; }",
+  ".js-choices li, .js-section li { padding-left: 0.15em; }",
+  "#answer { border: 0; border-top: 1px solid #cbd5e1; margin: 18px auto; max-width: 880px; }",
+  "@media (max-width: 560px) { .card { padding: 8px; font-size: 16px; } .js-card { padding: 14px 12px !important; border-radius: 8px !important; } .js-code-frame { padding: 12px !important; } }",
+].join("\n");
+
 function codeBlock(value) {
-  return `<pre><code>${escapeHtml(value).replaceAll("\n", "<br>")}</code></pre>`;
+  return `<div class="js-code-frame" style="${CODE_FRAME_STYLE}"><pre><code>${escapeHtml(value).replaceAll("\n", "<br>")}</code></pre></div>`;
+}
+
+function outputCodeBlock(value) {
+  return `<div class="js-code-frame js-output-frame" style="${OUTPUT_FRAME_STYLE}"><pre><code>${escapeHtml(value).replaceAll("\n", "<br>")}</code></pre></div>`;
+}
+
+function cardShell(content, side) {
+  return `<div class="js-card js-card-${side}" style="${CARD_STYLE}">${content}</div>`;
+}
+
+function renderBadge(value) {
+  return `<span class="js-badge" style="${BADGE_STYLE}">${escapeHtml(value)}</span>`;
+}
+
+function renderBackHeader(card) {
+  return `<div class="js-card-meta" style="margin:0 0 12px;">${renderBadge(`Level ${String(card.level).padStart(2, "0")}`)}${renderBadge(card.moduleLabel)}${renderBadge(card.topicLabel)}${card.kind === "quiz" ? renderBadge("Multiple choice") : ""}</div>`;
+}
+
+function renderSection(title, body, extraStyle = "") {
+  return `<section class="js-section" style="${SECTION_STYLE}${extraStyle}"><p class="js-section-title" style="${SECTION_TITLE_STYLE}"><strong>${escapeHtml(title)}:</strong></p>${body}</section>`;
+}
+
+function renderKeyValue(title, value, extraStyle = "") {
+  return `<p class="js-key-value" style="${KEY_VALUE_STYLE}${extraStyle}"><strong>${escapeHtml(title)}:</strong> ${sentence(escapeHtml(value))}</p>`;
+}
+
+function renderStudyFront(code) {
+  return cardShell(codeBlock(code), "front");
 }
 
 function sentence(value) {
-  return value.endsWith(".") ? value : `${value}.`;
+  return /[.!?]$/.test(value) ? value : `${value}.`;
 }
 
 function normalizeSpaces(value) {
@@ -329,8 +383,11 @@ function consoleOutputFor(card) {
     case "if-else":
       return linesOutput([i % 2 === 0 ? "Start" : "Skip"]);
     case "else-if-chain":
-      if (status === "failed") return linesOutput([`Retry ${i + 1}`]);
-      if (status === "done") return linesOutput(["Archive"]);
+      {
+        const branchStatus = pick(["queued", "active", "failed", "done"], i);
+        if (branchStatus === "failed") return linesOutput([`Retry ${i + 1}`]);
+        if (branchStatus === "done") return linesOutput(["Archive"]);
+      }
       return linesOutput(["Wait"]);
     case "switch-statement":
       return linesOutput([`${method === "GET" ? "Read" : "Write"} /${list}`]);
@@ -413,7 +470,7 @@ function consoleOutputFor(card) {
     case "sqlite-query-shape":
       return noteOutput("Runtime-dependent: logs rows.length for the database query result.");
     case "decorator-wrapper":
-      return noteOutput("Runtime-dependent: logs the elapsed time in milliseconds for the wrapped async function.");
+      return noOutput("No console output is produced because the snippet only defines the timing wrapper; it logs elapsed milliseconds when the returned wrapper is later invoked.");
     case "reflect-get":
       return noteOutput(`Runtime-dependent: logs Reflect.get(target, "${pick(["id", "name", "status", "email", "role", "total", "createdAt", "updatedAt"], i)}", receiver).`);
     default:
@@ -426,9 +483,9 @@ function renderConsoleOutput(card) {
   if (!output) return "";
   if (output.kind === "lines") {
     const text = output.lines.length ? output.lines.join("\n") : "(no output)";
-    return `<p><strong>Console output:</strong></p>${codeBlock(text)}`;
+    return renderSection("Console output", outputCodeBlock(text), "border-color:#86efac;background:#f0fdf4;");
   }
-  return `<p><strong>Console output:</strong> ${sentence(escapeHtml(output.text))}</p>`;
+  return renderKeyValue("Console output", output.text, "border-left-color:#16a34a;background:#f0fdf4;");
 }
 
 function uniqueList(items, max = 5) {
@@ -446,9 +503,9 @@ function uniqueList(items, max = 5) {
 
 function renderListSection(title, items) {
   const body = uniqueList(items)
-    .map((item) => `<li>${sentence(escapeHtml(item))}</li>`)
+    .map((item) => `<li style="${LIST_ITEM_STYLE}">${sentence(escapeHtml(item))}</li>`)
     .join("");
-  return `<p><strong>${escapeHtml(title)}:</strong></p><ul>${body}</ul>`;
+  return renderSection(title, `<ul style="${LIST_STYLE}">${body}</ul>`);
 }
 
 function choiceLabel(index) {
@@ -456,15 +513,33 @@ function choiceLabel(index) {
 }
 
 function renderChoices(choices) {
-  return `<ol type="A">${choices.map((choice) => `<li>${escapeHtml(choice)}</li>`).join("")}</ol>`;
+  return `<ol type="A" class="js-choices" style="${LIST_STYLE}">${choices.map((choice) => `<li style="${LIST_ITEM_STYLE}">${escapeHtml(choice)}</li>`).join("")}</ol>`;
+}
+
+function arrangeQuizChoices(choices, answerIndex, seed) {
+  const answer = choices[answerIndex];
+  const distractors = choices.filter((_, index) => index !== answerIndex);
+  const nextChoices = [];
+  const nextAnswerIndex = seed % choices.length;
+  let distractorIndex = 0;
+  for (let index = 0; index < choices.length; index += 1) {
+    if (index === nextAnswerIndex) {
+      nextChoices.push(answer);
+    } else {
+      nextChoices.push(distractors[distractorIndex]);
+      distractorIndex += 1;
+    }
+  }
+  return { choices: nextChoices, answerIndex: nextAnswerIndex };
 }
 
 function quizFront(code, question, choices) {
-  return [
+  return cardShell([
     codeBlock(code),
-    `<p><strong>Question:</strong> ${sentence(escapeHtml(question))}</p>`,
+    `<div class="js-quiz" style="${QUIZ_STYLE}"><p style="margin:0 0 8px;"><strong>Question:</strong> ${sentence(escapeHtml(question))}</p>`,
     renderChoices(choices),
-  ].join("");
+    `</div>`,
+  ].join(""), "front");
 }
 
 function renderQuizAnswer(card) {
@@ -473,8 +548,10 @@ function renderQuizAnswer(card) {
   const label = choiceLabel(answerIndex);
   const answer = choices[answerIndex];
   return [
-    `<p><strong>Answer:</strong> ${label}. ${sentence(escapeHtml(answer))}</p>`,
-    `<p><strong>Why:</strong> ${sentence(escapeHtml(explanation))}</p>`,
+    `<div class="js-answer" style="${ANSWER_STYLE}">`,
+    `<p style="margin:0 0 8px;"><strong>Answer:</strong> ${label}. ${sentence(escapeHtml(answer))}</p>`,
+    `<p style="margin:0;"><strong>Why:</strong> ${sentence(escapeHtml(explanation))}</p>`,
+    `</div>`,
   ].join("");
 }
 
@@ -603,10 +680,10 @@ function nuancesFor(card) {
   if (/\bvar\b/.test(code)) {
     nuances.push("var is function-scoped and hoisted, which can make reads before assignment produce undefined instead of a reference error.");
   }
-  if (code.includes("===")) {
+  if (/===|!==/.test(code)) {
     nuances.push("Strict equality compares without coercing types, so the value and type both matter.");
   }
-  if (code.includes("==") && !code.includes("===")) {
+  if (/(^|[^=!])==(?!=)|(^|[^!])!=(?!=)/.test(code)) {
     nuances.push("Loose equality may coerce types before comparing, so read it more cautiously than strict equality.");
   }
   if (code.includes("||")) {
@@ -702,26 +779,20 @@ function nuancesFor(card) {
 
 function renderBack(card) {
   const annotationItems = card.annotations
-    .map((note, index) => `<li><strong>Line ${index + 1}:</strong> ${sentence(escapeHtml(note))}</li>`)
+    .map((note, index) => `<li style="${LIST_ITEM_STYLE}"><strong>Line ${index + 1}:</strong> ${sentence(escapeHtml(note))}</li>`)
     .join("");
 
-  const uses = card.useCases
-    .map((useCase) => `<li>${sentence(escapeHtml(useCase))}</li>`)
-    .join("");
-
-  return [
-    `<p><strong>Intent:</strong> ${sentence(escapeHtml(card.intent))}</p>`,
-    `<p><strong>Read it as:</strong> ${sentence(escapeHtml(mentalModelFor(card)))}</p>`,
+  return cardShell([
+    renderBackHeader(card),
+    renderKeyValue("Intent", card.intent),
+    renderKeyValue("Read it as", mentalModelFor(card), "border-left-color:#7c3aed;background:#f5f3ff;"),
     renderQuizAnswer(card),
-    `<p><strong>Annotated code:</strong></p>`,
-    codeBlock(card.code),
-    `<ol>${annotationItems}</ol>`,
+    renderSection("Annotated code", `${codeBlock(card.code)}<ol style="${LIST_STYLE}">${annotationItems}</ol>`),
     renderListSection("Reading cues", readingCuesFor(card)),
     renderListSection("Nuance and pitfalls", nuancesFor(card)),
     renderConsoleOutput(card),
-    `<p><strong>Common use cases:</strong></p>`,
-    `<ul>${uses}</ul>`,
-  ].join("");
+    renderListSection("Common use cases", card.useCases),
+  ].join(""), "back");
 }
 
 function makeCard(moduleInfo, topic, seed, code, intent, annotations, useCases) {
@@ -740,7 +811,7 @@ function makeCard(moduleInfo, topic, seed, code, intent, annotations, useCases) 
     topicLabel: topic.label,
     seed,
     code,
-    front: codeBlock(code),
+    front: renderStudyFront(code),
     intent,
     annotations,
     useCases,
@@ -891,7 +962,7 @@ const syntaxTopics = [
     return makeCard(m, t, i, code, `Build a string by embedding variables inside a template literal`, [
       `Stores the person name string in name.`,
       `Stores a numeric count for later interpolation.`,
-      `Creates message by replacing ${"${name}"} and ${"${count}"} with their current values.`,
+      `Creates message by replacing the name and count interpolation slots with their current values.`,
     ], ["Reading log messages", "Understanding URL or label construction", "Recognizing interpolated values inside strings"]);
   }),
   topic("commented-code", "Comments beside code", 30, (m, t, i) => {
@@ -1715,15 +1786,18 @@ const advancedTopics = [
   }),
   topic("retry-backoff", "Retry with backoff", 30, (m, t, i) => {
     const retries = i + 2;
-    const code = `for (let attempt = 0; attempt < ${retries}; attempt += 1) {\n  try {\n    return await send();\n  } catch (error) {\n    await delay(2 ** attempt * 100);\n  }\n}`;
+    const code = `async function sendWithRetry() {\n  for (let attempt = 0; attempt < ${retries}; attempt += 1) {\n    try {\n      return await send();\n    } catch (error) {\n      await delay(2 ** attempt * 100);\n    }\n  }\n}\nconst result = await sendWithRetry();`;
     return makeCard(m, t, i, code, `Retry a failing async operation with increasing delays`, [
+      `Declares an async helper so returning from the retry loop is syntactically valid.`,
       `Starts a loop that allows up to ${retries} attempts.`,
       `Begins a try block for the operation that may fail.`,
       `Returns immediately if send succeeds.`,
       `Catches a failure from send.`,
       `Waits for an exponential backoff delay before the next attempt.`,
       `Closes the catch block.`,
-      `Closes the loop body.`,
+      `Closes the retry loop.`,
+      `Closes the async helper.`,
+      `Calls the helper and awaits its result.`,
     ], ["Reading resilient network code", "Understanding exponential backoff", "Recognizing retry loops"]);
   }),
   topic("semaphore", "Semaphore", 30, (m, t, i) => {
@@ -1895,6 +1969,7 @@ function quizTopic(key, label, spec) {
     const codeLines = spec.lines.map((line) => applyTemplate(line, vars));
     const notes = spec.annotations.map((note) => applyTemplate(note, vars));
     const choices = spec.choices.map((choice) => applyTemplate(choice, vars));
+    const arranged = arrangeQuizChoices(choices, spec.answerIndex, i);
     if (!spec.lines.join("\n").includes("{n}") && !spec.question.includes("{n}") && !spec.choices.join("\n").includes("{n}")) {
       codeLines.push(`// quiz case ${i + 1}`);
       notes.push(`Marks this as quiz case ${i + 1}; the preceding lines are the rule being tested.`);
@@ -1905,8 +1980,8 @@ function quizTopic(key, label, spec) {
       i,
       codeLines.join("\n"),
       applyTemplate(spec.question, vars),
-      choices,
-      spec.answerIndex,
+      arranged.choices,
+      arranged.answerIndex,
       applyTemplate(spec.explanation, vars),
       applyTemplate(spec.intent, vars),
       notes,
@@ -2314,9 +2389,9 @@ const extraControlTopics = templateTopics(useCaseSets.control, [
   {
     key: "exhaustive-default",
     label: "Exhaustive default",
-    lines: ["switch (kind) {", "  case \"{entity}\": return 1;", "  default: throw new Error(`Unknown kind: ${kind}`);", "}"],
+    lines: ["function readKind(kind) {", "  switch (kind) {", "    case \"{entity}\": return 1;", "    default: throw new Error(`Unknown kind: ${kind}`);", "  }", "}", "const result = readKind(\"{entity}\");"],
     intent: "Use a default branch to surface unexpected cases",
-    annotations: ["Starts a switch on kind.", "Handles one known case.", "Throws when no known case matches.", "Closes the switch."],
+    annotations: ["Declares a helper so switch branches can return or throw from a valid function body.", "Starts a switch on kind.", "Handles one known case.", "Throws when no known case matches.", "Closes the switch.", "Closes the helper.", "Calls the helper with a known kind."],
   },
   {
     key: "nested-try-catch",
@@ -3158,9 +3233,9 @@ const extraNodeTopics = templateTopics(useCaseSets.node, [
   {
     key: "redis-cache-shape",
     label: "Redis cache shape",
-    lines: ["const cached = await redis.get(key);", "if (cached) return JSON.parse(cached);", "await redis.set(key, JSON.stringify(value), { EX: {n} });"],
+    lines: ["async function readThroughCache(key, value) {", "  const cached = await redis.get(key);", "  if (cached) return JSON.parse(cached);", "  await redis.set(key, JSON.stringify(value), { EX: {n} });", "  return value;", "}", "const result = await readThroughCache(key, value);"],
     intent: "Read a cache-aside Redis pattern",
-    annotations: ["Attempts to read a cached string by key.", "Returns parsed cached data on a hit.", "Stores serialized data with an expiration time."],
+    annotations: ["Declares an async helper so cache hits can return from a valid function body.", "Attempts to read a cached string by key.", "Returns parsed cached data on a hit.", "Stores serialized data with an expiration time.", "Returns the fresh value after caching it.", "Closes the async cache helper.", "Calls the helper and awaits either cached or fresh data."],
   },
   {
     key: "message-queue-shape",
@@ -3266,9 +3341,9 @@ const extraAdvancedTopics = templateTopics(useCaseSets.advanced, [
   {
     key: "circuit-breaker",
     label: "Circuit breaker",
-    lines: ["if (failures > {n3}) throw new Error(\"Circuit open\");", "try { return await callService(); }", "catch (error) { failures += 1; throw error; }"],
+    lines: ["async function callWithBreaker() {", "  if (failures > {n3}) throw new Error(\"Circuit open\");", "  try { return await callService(); }", "  catch (error) { failures += 1; throw error; }", "}", "const result = await callWithBreaker();"],
     intent: "Stop calling an unhealthy dependency after repeated failures",
-    annotations: ["Fails fast when the failure count is over the threshold.", "Attempts the service call while the circuit is closed.", "Counts failures and rethrows the original error."],
+    annotations: ["Declares an async helper so success and failure paths can return or throw normally.", "Fails fast when the failure count is over the threshold.", "Attempts the service call while the circuit is closed.", "Counts failures and rethrows the original error.", "Closes the circuit-breaker helper.", "Calls the helper and awaits the service result."],
   },
   {
     key: "bulkhead",
@@ -3502,17 +3577,21 @@ const complexReadingSpecs = [
     key: "cache-request-coalescing",
     label: "Complex request coalescing",
     lines: [
-      "const key = `${\"{moduleKey}\"}:${id}`;",
-      "if (cache.has(key)) return cache.get(key);",
-      "if (pending.has(key)) return pending.get(key);",
-      "const promise = load(id).finally(() => pending.delete(key));",
-      "pending.set(key, promise);",
-      "const value = await promise;",
-      "cache.set(key, value);",
-      "return value;",
+      "async function loadWithCache(id) {",
+      "  const key = `${\"{moduleKey}\"}:${id}`;",
+      "  if (cache.has(key)) return cache.get(key);",
+      "  if (pending.has(key)) return pending.get(key);",
+      "  const promise = load(id).finally(() => pending.delete(key));",
+      "  pending.set(key, promise);",
+      "  const value = await promise;",
+      "  cache.set(key, value);",
+      "  return value;",
+      "}",
+      "const value = await loadWithCache(id);",
     ],
     intent: "Practice reading code that deduplicates concurrent requests and then caches the result",
     annotations: [
+      "Declares an async helper so return statements are valid and local to the function.",
       "Builds a cache key from module scope and id.",
       "Returns an already cached value when present.",
       "Returns an in-flight promise when the same request is already running.",
@@ -3521,24 +3600,30 @@ const complexReadingSpecs = [
       "Awaits the shared promise.",
       "Caches the resolved value.",
       "Returns the loaded value.",
+      "Closes the async helper.",
+      "Calls the helper and awaits the cached or loaded value.",
     ],
   },
   {
     key: "retry-state-object",
     label: "Complex retry state object",
     lines: [
-      "const meta = { attempt: 0, lastError: null, scope: \"{moduleKey}\" };",
-      "while (meta.attempt < {n3}) {",
-      "  try { return await run(meta); }",
-      "  catch (error) {",
-      "    meta.attempt += 1;",
-      "    meta.lastError = error;",
+      "async function runWithRetry() {",
+      "  const meta = { attempt: 0, lastError: null, scope: \"{moduleKey}\" };",
+      "  while (meta.attempt < {n3}) {",
+      "    try { return await run(meta); }",
+      "    catch (error) {",
+      "      meta.attempt += 1;",
+      "      meta.lastError = error;",
+      "    }",
       "  }",
+      "  throw meta.lastError;",
       "}",
-      "throw meta.lastError;",
+      "const result = await runWithRetry();",
     ],
     intent: "Practice reading retry logic that stores mutable metadata between attempts",
     annotations: [
+      "Declares an async helper so retry returns and throws are contained in a valid function body.",
       "Creates retry metadata.",
       "Allows attempts until the configured limit is reached.",
       "Runs the operation and returns immediately on success.",
@@ -3548,6 +3633,8 @@ const complexReadingSpecs = [
       "Closes the catch block.",
       "Closes the retry loop.",
       "Throws the final captured error after all attempts fail.",
+      "Closes the async helper.",
+      "Calls the helper and awaits the eventual result.",
     ],
   },
   {
@@ -3855,7 +3942,7 @@ const interviewCodeTopics = templateTopics(useCaseSets.interview, [
     label: "Interview typeof null",
     lines: ["const sample = [null, {n}];", "const kind = typeof sample[0];"],
     intent: "Recognize the long-standing typeof null edge case",
-    annotations: ["Creates an array whose first value is null.", "Stores the typeof result for null, which is the string object."],
+    annotations: ["Creates an array whose first value is null.", "Stores the typeof result for null, which is the string \"object\"."],
   },
   {
     key: "interview-primitive-method",
@@ -4560,7 +4647,7 @@ const interviewQuizTopics = quizTopics([
     question: "What value is stored in answer?",
     choices: ["\"object\"", "\"null\"", "\"undefined\"", "\"number\""],
     answerIndex: 0,
-    explanation: "typeof null returns the historical string object even though null is its own primitive value.",
+    explanation: "typeof null returns the historical string \"object\" even though null is its own primitive value.",
     intent: "Test the typeof null interview edge case",
     annotations: ["Creates an array with null in the first slot.", "Applies typeof to null and stores the resulting string."],
   },
@@ -4873,6 +4960,7 @@ function validate(cards) {
   const seenFronts = new Map();
   let quizCards = 0;
   let interviewCards = 0;
+  const quizAnswerLabels = new Map();
   for (const [index, card] of cards.entries()) {
     if (card.front.includes("\t")) errors.push(`Card ${index + 1} front contains a tab`);
     const back = renderBack(card);
@@ -4892,8 +4980,11 @@ function validate(cards) {
     if (card.kind === "quiz") {
       quizCards += 1;
       if (!card.front.includes("Question:")) errors.push(`Quiz card ${index + 1} is missing a front question`);
+      if (/Question:<\/strong>[^<]*[?!]\./.test(card.front)) errors.push(`Quiz card ${index + 1} has double punctuation in its question`);
       if (!back.includes("Answer:") || !back.includes("Why:")) errors.push(`Quiz card ${index + 1} is missing answer back matter`);
       if (!tagsFor(card).includes("multiple-choice")) errors.push(`Quiz card ${index + 1} is missing multiple-choice tag`);
+      const label = choiceLabel(card.quiz.answerIndex);
+      quizAnswerLabels.set(label, (quizAnswerLabels.get(label) ?? 0) + 1);
     }
   }
 
@@ -4904,6 +4995,9 @@ function validate(cards) {
   }
   if (quizCards !== expectedQuizCards) {
     errors.push(`Expected ${expectedQuizCards} quiz cards, got ${quizCards}`);
+  }
+  for (const label of ["A", "B", "C", "D"]) {
+    if ((quizAnswerLabels.get(label) ?? 0) === 0) errors.push(`No quiz answers use choice ${label}`);
   }
 
   if (errors.length) {
@@ -4972,13 +5066,7 @@ function createModel(mod) {
       createField("Front", 0),
       createField("Back", 1),
     ],
-    css: [
-      ".card { font-family: Arial, sans-serif; font-size: 18px; text-align: left; color: #111; background: #fff; }",
-      "pre { white-space: pre-wrap; margin: 0.6em 0; padding: 0.75em; border: 1px solid #ddd; border-radius: 6px; background: #f7f7f7; }",
-      "code { font-family: Menlo, Consolas, monospace; font-size: 0.95em; }",
-      "ol, ul { padding-left: 1.5em; }",
-      "li { margin: 0.35em 0; }",
-    ].join("\n"),
+    css: CARD_CSS,
     latexPre: "\\documentclass[12pt]{article}\n\\special{papersize=3in,5in}\n\\usepackage[utf8]{inputenc}\n\\usepackage{amssymb,amsmath}\n\\pagestyle{empty}\n\\setlength{\\parindent}{0in}\n\\begin{document}",
     latexPost: "\\end{document}",
     req: [[0, "any", [0]]],
